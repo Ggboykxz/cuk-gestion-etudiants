@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id            String   @id @default(cuid())
+  matricule     String   @unique
+  nom           String
+  prenom        String
+  dateNaissance String?
+  lieuNaissance String?
+  sexe          String?
+  nationalite   String?  @default("Gabonaise")
+  photo         String?
+
+  // Contact
+  telephone     String?
+  email         String?
+  adresse       String?
+
+  // Guardian/Parent
+  nomPere       String?
+  nomMere       String?
+  telephonePere String?
+  telephoneMere String?
+  adresseParents String?
+  personneContact String?
+  telephoneContact String?
+  lienParente   String?
+
+  // Academic
+  filiere       String?
+  niveau        String?
+  anneeInscription String?
+  statut        String?  @default("Actif")
+  numeroDossier String?
+
+  // Origin
+  etablissementOrigine String?
+  diplomeOrigine       String?
+  anneeObtentionDiplome String?
+
+  // Administrative
+  bourse        String?
+  chambre       String?
+
+  // Metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  documents     Document[]
+}
+
+model Document {
+  id            String   @id @default(cuid())
+  titre         String
+  type          String
+  fichier       String
+  tailleFichier String?
+  etudiantId    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  student       Student  @relation(fields: [etudiantId], references: [id], onDelete: Cascade)
+}
+
+model Filiere {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  nom           String
+  description   String?
+  niveau        String?
+  responsable   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
