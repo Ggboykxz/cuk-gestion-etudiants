@@ -1,12 +1,25 @@
 import { db } from '@/lib/db'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const student = await db.student.findUnique({
       where: { id },
-      include: { documents: true },
+      include: {
+        inscriptions: {
+          include: {
+            promotion: {
+              include: { filiere: true }
+            },
+            notes: {
+              include: { matiere: true }
+            }
+          },
+          orderBy: { createdAt: 'desc' }
+        },
+        documents: true
+      }
     })
 
     if (!student) {
@@ -16,24 +29,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json(student)
   } catch (error) {
     console.error('Error fetching student:', error)
-    return NextResponse.json({ error: 'Erreur lors de la récupération de l\'étudiant' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur lors du chargement de l\'étudiant' }, { status: 500 })
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const body = await request.json()
-
-    // If matricule is being changed, check uniqueness
-    if (body.matricule) {
-      const existing = await db.student.findUnique({
-        where: { matricule: body.matricule },
-      })
-      if (existing && existing.id !== id) {
-        return NextResponse.json({ error: 'Ce matricule existe déjà' }, { status: 400 })
-      }
-    }
+    const body = await req.json()
 
     const student = await db.student.update({
       where: { id },
@@ -41,34 +44,28 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         matricule: body.matricule,
         nom: body.nom,
         prenom: body.prenom,
-        dateNaissance: body.dateNaissance ?? undefined,
-        lieuNaissance: body.lieuNaissance ?? undefined,
-        sexe: body.sexe ?? undefined,
-        nationalite: body.nationalite ?? undefined,
-        photo: body.photo ?? undefined,
-        telephone: body.telephone ?? undefined,
-        email: body.email ?? undefined,
-        adresse: body.adresse ?? undefined,
-        nomPere: body.nomPere ?? undefined,
-        nomMere: body.nomMere ?? undefined,
-        telephonePere: body.telephonePere ?? undefined,
-        telephoneMere: body.telephoneMere ?? undefined,
-        adresseParents: body.adresseParents ?? undefined,
-        personneContact: body.personneContact ?? undefined,
-        telephoneContact: body.telephoneContact ?? undefined,
-        lienParente: body.lienParente ?? undefined,
-        filiere: body.filiere ?? undefined,
-        niveau: body.niveau ?? undefined,
-        anneeInscription: body.anneeInscription ?? undefined,
-        statut: body.statut ?? undefined,
-        numeroDossier: body.numeroDossier ?? undefined,
-        etablissementOrigine: body.etablissementOrigine ?? undefined,
-        diplomeOrigine: body.diplomeOrigine ?? undefined,
-        anneeObtentionDiplome: body.anneeObtentionDiplome ?? undefined,
-        bourse: body.bourse ?? undefined,
-        chambre: body.chambre ?? undefined,
-      },
-      include: { documents: true },
+        dateNaissance: body.dateNaissance,
+        lieuNaissance: body.lieuNaissance,
+        sexe: body.sexe,
+        nationalite: body.nationalite,
+        photo: body.photo,
+        telephone: body.telephone,
+        email: body.email,
+        adresse: body.adresse,
+        nomPere: body.nomPere,
+        nomMere: body.nomMere,
+        telephonePere: body.telephonePere,
+        telephoneMere: body.telephoneMere,
+        adresseParents: body.adresseParents,
+        personneContact: body.personneContact,
+        telephoneContact: body.telephoneContact,
+        lienParente: body.lienParente,
+        etablissementOrigine: body.etablissementOrigine,
+        diplomeOrigine: body.diplomeOrigine,
+        anneeObtentionDiplome: body.anneeObtentionDiplome,
+        bourse: body.bourse,
+        chambre: body.chambre,
+      }
     })
 
     return NextResponse.json(student)
@@ -78,14 +75,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-
-    await db.student.delete({
-      where: { id },
-    })
-
+    
+    await db.student.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting student:', error)

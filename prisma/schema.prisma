@@ -7,6 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// === ÉTUDIANT - Personne physique, existe une seule fois ===
 model Student {
   id            String   @id @default(cuid())
   matricule     String   @unique
@@ -17,13 +18,9 @@ model Student {
   sexe          String?
   nationalite   String?  @default("Gabonaise")
   photo         String?
-
-  // Contact
   telephone     String?
   email         String?
   adresse       String?
-
-  // Guardian/Parent
   nomPere       String?
   nomMere       String?
   telephonePere String?
@@ -32,34 +29,113 @@ model Student {
   personneContact String?
   telephoneContact String?
   lienParente   String?
-
-  // Academic
-  filiere       String?
-  niveau        String?
-  anneeInscription String?
-  statut        String?  @default("Actif")
-  numeroDossier String?
-
-  // Origin
   etablissementOrigine String?
   diplomeOrigine       String?
   anneeObtentionDiplome String?
-
-  // Administrative
   bourse        String?
   chambre       String?
-
-  // Metadata
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  inscriptions  Inscription[]
   documents     Document[]
 }
 
+// === FILIÈRE - Programme d'études ===
+model Filiere {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  nom           String
+  description   String?
+  niveau        String?  // Licence (L1-L3), Master (M1-M2), Licence & Master
+  responsable   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  promotions    Promotion[]
+  matieres      Matiere[]
+}
+
+// === PROMOTION - Une filière pour une année scolaire donnée ===
+model Promotion {
+  id            String   @id @default(cuid())
+  filiereId     String
+  anneeScolaire String   // "2024-2025"
+  niveau        String   // L1, L2, L3, M1, M2
+  statut        String   @default("En cours") // "En cours", "Clôturée"
+  dateCloture   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  filiere       Filiere  @relation(fields: [filiereId], references: [id])
+  inscriptions  Inscription[]
+  matieres      Matiere[]
+
+  @@unique([filiereId, anneeScolaire, niveau])
+}
+
+// === INSCRIPTION - Un étudiant dans une promotion ===
+model Inscription {
+  id            String   @id @default(cuid())
+  studentId     String
+  promotionId   String
+  numeroDossier String?
+  statutDossier String?  @default("Incomplet") // Complet, Incomplet, En attente, Validé, Rejeté
+  statut        String?  @default("Actif") // Actif, Inactif, Diplômé, Renvoyé, Ajourné
+  redoublant    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  student       Student  @relation(fields: [studentId], references: [id])
+  promotion     Promotion @relation(fields: [promotionId], references: [id])
+  notes         Note[]
+
+  @@unique([studentId, promotionId])
+}
+
+// === MATIÈRE - Une matière enseignée dans une promotion ===
+model Matiere {
+  id            String   @id @default(cuid())
+  code          String
+  nom           String
+  coefficient   Float    @default(1)
+  semestre      Int      @default(1) // 1 ou 2
+  filiereId     String
+  promotionId   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  filiere       Filiere  @relation(fields: [filiereId], references: [id])
+  promotion     Promotion? @relation(fields: [promotionId], references: [id])
+  notes         Note[]
+
+  @@unique([code, filiereId])
+}
+
+// === NOTE - Note d'un étudiant pour une matière dans une inscription ===
+model Note {
+  id             String   @id @default(cuid())
+  inscriptionId  String
+  matiereId      String
+  noteCC         Float?   // Note contrôle continu
+  noteExam       Float?   // Note examen
+  noteTP         Float?   // Note TP
+  moyenne        Float?   // Calculée automatiquement
+  observation    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  inscription    Inscription @relation(fields: [inscriptionId], references: [id])
+  matiere        Matiere  @relation(fields: [matiereId], references: [id])
+
+  @@unique([inscriptionId, matiereId])
+}
+
+// === DOCUMENT - Document d'un étudiant ===
 model Document {
   id            String   @id @default(cuid())
   titre         String
-  type          String
+  type          String   // Acte de naissance, Relevé de notes, Diplôme, Certificat, Photo, Autre
   fichier       String
   tailleFichier String?
   etudiantId    String
@@ -67,15 +143,4 @@ model Document {
   updatedAt     DateTime @updatedAt
 
   student       Student  @relation(fields: [etudiantId], references: [id], onDelete: Cascade)
-}
-
-model Filiere {
-  id            String   @id @default(cuid())
-  code          String   @unique
-  nom           String
-  description   String?
-  niveau        String?
-  responsable   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
 }

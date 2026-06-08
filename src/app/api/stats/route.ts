@@ -4,59 +4,69 @@ import { NextResponse } from 'next/server'
 export async function GET() {
   try {
     const totalStudents = await db.student.count()
-    const totalFilieres = await db.filiere.count()
-    const totalDocuments = await db.document.count()
-    const activeStudents = await db.student.count({
-      where: { statut: 'Actif' },
+    
+    const totalPromotions = await db.promotion.count()
+    const activePromotions = await db.promotion.count({ where: { statut: 'En cours' } })
+    const closedPromotions = await db.promotion.count({ where: { statut: 'Clôturée' } })
+    
+    const totalInscriptions = await db.inscription.count()
+    
+    const dossierByStatus = await db.inscription.groupBy({
+      by: ['statutDossier'],
+      _count: true,
     })
 
-    // Students by filière
-    const byFiliere = await db.student.groupBy({
-      by: ['filiere'],
-      _count: { filiere: true },
-      where: { filiere: { not: null } },
+    const inscriptionsByFiliere = await db.inscription.findMany({
+      include: {
+        promotion: { include: { filiere: true } }
+      }
     })
 
-    // Students by niveau
-    const byNiveau = await db.student.groupBy({
-      by: ['niveau'],
-      _count: { niveau: true },
-      where: { niveau: { not: null } },
-    })
+    const filiereCounts: Record<string, number> = {}
+    for (const ins of inscriptionsByFiliere) {
+      const name = ins.promotion?.filiere?.nom || 'Non assigné'
+      filiereCounts[name] = (filiereCounts[name] || 0) + 1
+    }
 
-    // Students by statut
-    const byStatut = await db.student.groupBy({
-      by: ['statut'],
-      _count: { statut: true },
-      where: { statut: { not: null } },
-    })
-
-    // Students by sexe
-    const bySexe = await db.student.groupBy({
-      by: ['sexe'],
-      _count: { sexe: true },
-      where: { sexe: { not: null } },
-    })
-
-    // Recent students
-    const recentStudents = await db.student.findMany({
-      take: 5,
+    const recentInscriptions = await db.inscription.findMany({
+      take: 10,
       orderBy: { createdAt: 'desc' },
+      include: {
+        student: true,
+        promotion: { include: { filiere: true } }
+      }
     })
+
+    const dossiersComplets = await db.inscription.count({ 
+      where: { statutDossier: 'Complet' } 
+    })
+    const dossiersValidés = await db.inscription.count({ 
+      where: { statutDossier: 'Validé' } 
+    })
+
+    const totalFilieres = await db.filiere.count()
+
+    const tauxReussite = totalInscriptions > 0
+      ? Math.round(((dossiersComplets + dossiersValidés) / totalInscriptions) * 100)
+      : 0
 
     return NextResponse.json({
       totalStudents,
+      totalPromotions,
+      activePromotions,
+      closedPromotions,
+      totalInscriptions,
       totalFilieres,
-      totalDocuments,
-      activeStudents,
-      byFiliere: byFiliere.map((item) => ({ name: item.filiere, count: item._count.filiere })),
-      byNiveau: byNiveau.map((item) => ({ name: item.niveau, count: item._count.niveau })),
-      byStatut: byStatut.map((item) => ({ name: item.statut, count: item._count.statut })),
-      bySexe: bySexe.map((item) => ({ name: item.sexe, count: item._count.sexe })),
-      recentStudents,
+      dossierByStatus: dossierByStatus.map(d => ({
+        statut: d.statutDossier || 'Non défini',
+        count: d._count,
+      })),
+      filiereCounts,
+      recentInscriptions,
+      tauxReussite,
     })
   } catch (error) {
     console.error('Error fetching stats:', error)
-    return NextResponse.json({ error: 'Erreur lors de la récupération des statistiques' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur lors du chargement des statistiques' }, { status: 500 })
   }
 }

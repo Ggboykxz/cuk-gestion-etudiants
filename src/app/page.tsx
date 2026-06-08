@@ -1,1681 +1,1803 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard, Users, GraduationCap, FileText, Plus, Search, Edit, Trash2,
-  Eye, Upload, X, ChevronLeft, ChevronRight, Menu, UserCircle, Phone, Mail,
-  MapPin, Calendar, Award, Building, BookOpen, Shield, Home, Filter,
-  ArrowLeft, Download, File, Image, CheckCircle2, AlertCircle, Loader2,
-  Hash, User, Briefcase, FolderOpen, TrendingUp, UserCheck, FileBadge,
-  Settings2
+  LayoutDashboard, Users, GraduationCap, Trophy, FileText,
+  Plus, Search, Edit3, Trash2, X, ChevronRight, Lock,
+  AlertTriangle, CheckCircle2, Clock, XCircle, Eye,
+  BookOpen, Calendar, Save, RefreshCw, Upload, FileUp,
+  UserPlus, FolderOpen, Award, TrendingUp, BarChart3,
+  Menu, ChevronDown, Filter, ArrowLeft, Medal, Shield,
+  Printer, CheckCircle, AlertCircle, Info, Download
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-// ==================== TYPES ====================
+// ========================
+// TYPES
+// ========================
 interface Student {
-  id: string
-  matricule: string
-  nom: string
-  prenom: string
-  dateNaissance: string | null
-  lieuNaissance: string | null
-  sexe: string | null
-  nationalite: string | null
-  photo: string | null
-  telephone: string | null
-  email: string | null
-  adresse: string | null
-  nomPere: string | null
-  nomMere: string | null
-  telephonePere: string | null
-  telephoneMere: string | null
-  adresseParents: string | null
-  personneContact: string | null
-  telephoneContact: string | null
-  lienParente: string | null
-  filiere: string | null
-  niveau: string | null
-  anneeInscription: string | null
-  statut: string | null
-  numeroDossier: string | null
-  etablissementOrigine: string | null
-  diplomeOrigine: string | null
-  anneeObtentionDiplome: string | null
-  bourse: string | null
-  chambre: string | null
-  createdAt: string
-  updatedAt: string
-  documents?: Document[]
-}
-
-interface Document {
-  id: string
-  titre: string
-  type: string
-  fichier: string
-  tailleFichier: string | null
-  etudiantId: string
-  createdAt: string
-  updatedAt: string
-  student?: { id: string; nom: string; prenom: string; matricule: string }
+  id: string; matricule: string; nom: string; prenom: string
+  dateNaissance?: string | null; lieuNaissance?: string | null
+  sexe?: string | null; nationalite?: string | null; photo?: string | null
+  telephone?: string | null; email?: string | null; adresse?: string | null
+  nomPere?: string | null; nomMere?: string | null
+  telephonePere?: string | null; telephoneMere?: string | null
+  adresseParents?: string | null; personneContact?: string | null
+  telephoneContact?: string | null; lienParente?: string | null
+  etablissementOrigine?: string | null; diplomeOrigine?: string | null
+  anneeObtentionDiplome?: string | null; bourse?: string | null; chambre?: string | null
+  inscriptions?: Inscription[]; documents?: Document[]
+  createdAt: string; updatedAt: string
 }
 
 interface Filiere {
-  id: string
-  code: string
-  nom: string
-  description: string | null
-  niveau: string | null
-  responsable: string | null
-  createdAt: string
-  updatedAt: string
+  id: string; code: string; nom: string; description?: string | null
+  niveau?: string | null; responsable?: string | null
+  _count?: { promotions: number; matieres: number }
+  createdAt: string; updatedAt: string
+}
+
+interface Promotion {
+  id: string; filiereId: string; anneeScolaire: string; niveau: string
+  statut: string; dateCloture?: string | null
+  filiere?: Filiere; inscriptions?: Inscription[]; matieres?: Matiere[]
+  _count?: { inscriptions: number; matieres: number }
+  createdAt: string; updatedAt: string
+}
+
+interface Inscription {
+  id: string; studentId: string; promotionId: string
+  numeroDossier?: string | null; statutDossier?: string | null
+  statut?: string | null; redoublant: boolean
+  student?: Student; promotion?: Promotion; notes?: Note[]
+  createdAt: string; updatedAt: string
+}
+
+interface Matiere {
+  id: string; code: string; nom: string; coefficient: number
+  semestre: number; filiereId: string; promotionId?: string | null
+  filiere?: Filiere; promotion?: Promotion
+  _count?: { notes: number }
+  notes?: Note[]
+  createdAt: string; updatedAt: string
+}
+
+interface Note {
+  id: string; inscriptionId: string; matiereId: string
+  noteCC?: number | null; noteExam?: number | null; noteTP?: number | null
+  moyenne?: number | null; observation?: string | null
+  inscription?: Inscription; matiere?: Matiere
+  createdAt: string; updatedAt: string
+}
+
+interface Document {
+  id: string; titre: string; type: string; fichier: string
+  tailleFichier?: string | null; etudiantId: string
+  student?: { id: string; nom: string; prenom: string; matricule: string }
+  createdAt: string; updatedAt: string
 }
 
 interface Stats {
-  totalStudents: number
-  totalFilieres: number
-  totalDocuments: number
-  activeStudents: number
-  byFiliere: { name: string | null; count: number }[]
-  byNiveau: { name: string | null; count: number }[]
-  byStatut: { name: string | null; count: number }[]
-  bySexe: { name: string | null; count: number }[]
-  recentStudents: Student[]
+  totalStudents: number; totalPromotions: number
+  activePromotions: number; closedPromotions: number
+  totalInscriptions: number; totalFilieres: number
+  dossierByStatus: { statut: string; count: number }[]
+  filiereCounts: Record<string, number>
+  recentInscriptions: Inscription[]
+  tauxReussite: number
 }
 
-type View = 'dashboard' | 'students' | 'filieres' | 'documents'
-
-const NIVEAUX = ['L1', 'L2', 'L3', 'M1', 'M2']
-const STATUTS = ['Actif', 'Inactif', 'Diplômé', 'Renvoyé']
-const SEXES = ['Masculin', 'Féminin']
-const DOC_TYPES = ['Acte de naissance', 'Relevé de notes', 'Diplôme', 'Certificat', 'Photo', 'Autre']
-const ANNEES = ['2020-2021', '2021-2022', '2022-2023', '2023-2024', '2024-2025', '2025-2026']
-
-// ==================== API HELPERS ====================
-async function apiGet(path: string) {
-  const res = await fetch(path)
-  if (!res.ok) throw new Error(`Erreur API: ${res.status}`)
-  return res.json()
+interface PalmaresData {
+  promotion: { id: string; anneeScolaire: string; niveau: string; statut: string; dateCloture?: string | null; filiere: Filiere }
+  palmares: PalmaresEntry[]
+  statistics: { classAvg: number; passRate: number; totalStudents: number; mentionDistribution: Record<string, number> }
 }
 
-async function apiPost(path: string, body: unknown) {
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Erreur' }))
-    throw new Error(err.error || 'Erreur')
+interface PalmaresEntry {
+  inscriptionId: string; studentId: string; matricule: string
+  nom: string; prenom: string; redoublant: boolean
+  rang: number; moyenneS1: number | null; moyenneS2: number | null
+  moyenneAnnuelle: number | null; totalCredits: number; mention: string
+  notes: { matiereId: string; matiereNom: string; matiereCode: string; coefficient: number; semestre: number; noteCC: number | null; noteExam: number | null; noteTP: number | null; moyenne: number | null }[]
+}
+
+// ========================
+// HELPERS
+// ========================
+const dossierBadge = (statut: string | null | undefined) => {
+  const s = statut || 'Incomplet'
+  const map: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
+    'Complet': { bg: 'bg-emerald-500/15 border-emerald-500/30', text: 'text-emerald-400', icon: <CheckCircle2 className="w-3 h-3" /> },
+    'Incomplet': { bg: 'bg-orange-500/15 border-orange-500/30', text: 'text-orange-400', icon: <AlertTriangle className="w-3 h-3" /> },
+    'En attente': { bg: 'bg-yellow-500/15 border-yellow-500/30', text: 'text-yellow-400', icon: <Clock className="w-3 h-3" /> },
+    'Validé': { bg: 'bg-blue-500/15 border-blue-500/30', text: 'text-blue-400', icon: <CheckCircle className="w-3 h-3" /> },
+    'Rejeté': { bg: 'bg-red-500/15 border-red-500/30', text: 'text-red-400', icon: <XCircle className="w-3 h-3" /> },
   }
-  return res.json()
-}
-
-async function apiPut(path: string, body: unknown) {
-  const res = await fetch(path, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Erreur' }))
-    throw new Error(err.error || 'Erreur')
-  }
-  return res.json()
-}
-
-async function apiDelete(path: string) {
-  const res = await fetch(path, { method: 'DELETE' })
-  if (!res.ok) throw new Error('Erreur de suppression')
-  return res.json()
-}
-
-async function uploadFile(file: File, type: string = 'document') {
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('type', type)
-  const res = await fetch('/api/upload', { method: 'POST', body: formData })
-  if (!res.ok) throw new Error('Erreur de téléchargement')
-  return res.json()
-}
-
-// ==================== EMPTY STUDENT ====================
-const emptyStudent: Omit<Student, 'id' | 'createdAt' | 'updatedAt' | 'documents'> = {
-  matricule: '', nom: '', prenom: '', dateNaissance: '', lieuNaissance: '',
-  sexe: '', nationalite: 'Gabonaise', photo: '', telephone: '', email: '',
-  adresse: '', nomPere: '', nomMere: '', telephonePere: '', telephoneMere: '',
-  adresseParents: '', personneContact: '', telephoneContact: '', lienParente: '',
-  filiere: '', niveau: '', anneeInscription: '', statut: 'Actif', numeroDossier: '',
-  etablissementOrigine: '', diplomeOrigine: '', anneeObtentionDiplome: '',
-  bourse: '', chambre: '',
-}
-
-// ==================== ANIMATED COUNTER ====================
-function AnimatedCounter({ value, duration = 1000 }: { value: number; duration?: number }) {
-  const [display, setDisplay] = useState(0)
-  const prev = useRef(0)
-
-  useEffect(() => {
-    const start = prev.current
-    const end = value
-    const startTime = Date.now()
-    const step = () => {
-      const elapsed = Date.now() - startTime
-      const progress = Math.min(elapsed / duration, 1)
-      const eased = 1 - Math.pow(1 - progress, 3)
-      setDisplay(Math.round(start + (end - start) * eased))
-      if (progress < 1) requestAnimationFrame(step)
-    }
-    requestAnimationFrame(step)
-    prev.current = value
-  }, [value, duration])
-
-  return <>{display}</>
-}
-
-// ==================== STAT CARD ====================
-function StatCard({ title, value, icon: Icon, color, delay = 0 }: {
-  title: string; value: number; icon: React.ElementType; color: string; delay?: number
-}) {
+  const style = map[s] || map['Incomplet']
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.4 }}
-      className={`neon-border rounded-lg p-5 bg-[#12121a] relative overflow-hidden group cursor-default`}
-    >
-      <div className="absolute top-0 right-0 w-24 h-24 opacity-5 group-hover:opacity-10 transition-opacity">
-        <Icon className="w-full h-full" style={{ color }} />
-      </div>
-      <div className="flex items-center gap-3 mb-3">
-        <div className="p-2 rounded-md" style={{ background: `${color}15` }}>
-          <Icon className="w-5 h-5" style={{ color }} />
-        </div>
-        <span className="text-sm text-[#6b6b8a] font-mono uppercase tracking-wider">{title}</span>
-      </div>
-      <div className="text-3xl font-bold font-mono" style={{ color }}>
-        <AnimatedCounter value={value} />
-      </div>
-    </motion.div>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono border ${style.bg} ${style.text}`}>
+      {style.icon} {s}
+    </span>
   )
 }
 
-// ==================== STUDENT FORM ====================
-function StudentForm({ student, filieres, onSave, onCancel }: {
-  student: Partial<Student>
-  filieres: Filiere[]
-  onSave: (data: Partial<Student>) => void
-  onCancel: () => void
-}) {
-  const [form, setForm] = useState(student)
-  const [uploading, setUploading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const updateField = (field: string, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }))
+const mentionBadge = (mention: string) => {
+  const map: Record<string, { bg: string; text: string }> = {
+    'Très Bien': { bg: 'bg-emerald-500/15 border-emerald-500/30', text: 'text-emerald-400' },
+    'Bien': { bg: 'bg-blue-500/15 border-blue-500/30', text: 'text-blue-400' },
+    'Assez Bien': { bg: 'bg-cyan-500/15 border-cyan-500/30', text: 'text-cyan-400' },
+    'Passable': { bg: 'bg-yellow-500/15 border-yellow-500/30', text: 'text-yellow-400' },
+    'Ajourné': { bg: 'bg-red-500/15 border-red-500/30', text: 'text-red-400' },
   }
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      const result = await uploadFile(file, 'photo')
-      setForm(prev => ({ ...prev, photo: result.path }))
-      toast.success('Photo téléchargée')
-    } catch {
-      toast.error('Erreur lors du téléchargement de la photo')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.matricule || !form.nom || !form.prenom) {
-      toast.error('Matricule, nom et prénom sont requis')
-      return
-    }
-    setSaving(true)
-    try {
-      await onSave(form)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const sectionClass = "mb-6"
-  const sectionTitleClass = "text-xs font-mono uppercase tracking-widest text-[#00ff88] mb-3 flex items-center gap-2"
-  const fieldClass = "space-y-1.5"
-  const inputClass = "terminal-input w-full rounded-md px-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6] placeholder:text-[#4a4a6a]"
-  const labelClass = "text-xs font-mono text-[#6b6b8a] uppercase tracking-wider"
-  const selectClass = "terminal-input w-full rounded-md px-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-
+  const style = map[mention] || { bg: 'bg-gray-500/15 border-gray-500/30', text: 'text-gray-400' }
   return (
-    <form onSubmit={handleSubmit} className="max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-      {/* Identité */}
-      <div className={sectionClass}>
-        <div className={sectionTitleClass}><User className="w-3.5 h-3.5" /> Identité</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className={fieldClass}>
-            <label className={labelClass}>Matricule *</label>
-            <input className={inputClass} value={form.matricule || ''} onChange={e => updateField('matricule', e.target.value)} placeholder="EX: 2024-001" required />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Nom *</label>
-            <input className={inputClass} value={form.nom || ''} onChange={e => updateField('nom', e.target.value)} placeholder="Nom de famille" required />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Prénom *</label>
-            <input className={inputClass} value={form.prenom || ''} onChange={e => updateField('prenom', e.target.value)} placeholder="Prénom(s)" required />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Date de naissance</label>
-            <input type="date" className={inputClass} value={form.dateNaissance || ''} onChange={e => updateField('dateNaissance', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Lieu de naissance</label>
-            <input className={inputClass} value={form.lieuNaissance || ''} onChange={e => updateField('lieuNaissance', e.target.value)} placeholder="Ville, Pays" />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Sexe</label>
-            <select className={selectClass} value={form.sexe || ''} onChange={e => updateField('sexe', e.target.value)}>
-              <option value="">— Sélectionner —</option>
-              {SEXES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Nationalité</label>
-            <input className={inputClass} value={form.nationalite || ''} onChange={e => updateField('nationalite', e.target.value)} placeholder="Gabonaise" />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Photo</label>
-            <div className="flex gap-2 items-center">
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
-                className="px-3 py-2 text-xs rounded-md border border-[rgba(0,255,136,0.3)] text-[#00ff88] hover:bg-[rgba(0,255,136,0.1)] transition-all disabled:opacity-50">
-                {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              </button>
-              {form.photo && <span className="text-xs text-[#6b6b8a] truncate">✓ Photo</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Contact */}
-      <div className={sectionClass}>
-        <div className={sectionTitleClass}><Phone className="w-3.5 h-3.5" /> Contact</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className={fieldClass}>
-            <label className={labelClass}>Téléphone</label>
-            <input className={inputClass} value={form.telephone || ''} onChange={e => updateField('telephone', e.target.value)} placeholder="+241 XX XX XX XX" />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Email</label>
-            <input type="email" className={inputClass} value={form.email || ''} onChange={e => updateField('email', e.target.value)} placeholder="email@example.com" />
-          </div>
-          <div className={`${fieldClass} col-span-2`}>
-            <label className={labelClass}>Adresse</label>
-            <input className={inputClass} value={form.adresse || ''} onChange={e => updateField('adresse', e.target.value)} placeholder="Adresse complète" />
-          </div>
-        </div>
-      </div>
-
-      {/* Parents/Tuteur */}
-      <div className={sectionClass}>
-        <div className={sectionTitleClass}><Users className="w-3.5 h-3.5" /> Parents / Tuteur</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className={fieldClass}>
-            <label className={labelClass}>Nom du père</label>
-            <input className={inputClass} value={form.nomPere || ''} onChange={e => updateField('nomPere', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Tél. père</label>
-            <input className={inputClass} value={form.telephonePere || ''} onChange={e => updateField('telephonePere', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Nom de la mère</label>
-            <input className={inputClass} value={form.nomMere || ''} onChange={e => updateField('nomMere', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Tél. mère</label>
-            <input className={inputClass} value={form.telephoneMere || ''} onChange={e => updateField('telephoneMere', e.target.value)} />
-          </div>
-          <div className={`${fieldClass} col-span-2`}>
-            <label className={labelClass}>Adresse parents</label>
-            <input className={inputClass} value={form.adresseParents || ''} onChange={e => updateField('adresseParents', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Personne à contacter</label>
-            <input className={inputClass} value={form.personneContact || ''} onChange={e => updateField('personneContact', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Tél. contact</label>
-            <input className={inputClass} value={form.telephoneContact || ''} onChange={e => updateField('telephoneContact', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Lien de parenté</label>
-            <input className={inputClass} value={form.lienParente || ''} onChange={e => updateField('lienParente', e.target.value)} placeholder="Père, Mère, Oncle..." />
-          </div>
-        </div>
-      </div>
-
-      {/* Académique */}
-      <div className={sectionClass}>
-        <div className={sectionTitleClass}><GraduationCap className="w-3.5 h-3.5" /> Académique</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className={fieldClass}>
-            <label className={labelClass}>Filière</label>
-            <select className={selectClass} value={form.filiere || ''} onChange={e => updateField('filiere', e.target.value)}>
-              <option value="">— Sélectionner —</option>
-              {filieres.map(f => <option key={f.id} value={f.nom}>{f.code} - {f.nom}</option>)}
-            </select>
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Niveau</label>
-            <select className={selectClass} value={form.niveau || ''} onChange={e => updateField('niveau', e.target.value)}>
-              <option value="">— Sélectionner —</option>
-              {NIVEAUX.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Année d&apos;inscription</label>
-            <select className={selectClass} value={form.anneeInscription || ''} onChange={e => updateField('anneeInscription', e.target.value)}>
-              <option value="">— Sélectionner —</option>
-              {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Statut</label>
-            <select className={selectClass} value={form.statut || ''} onChange={e => updateField('statut', e.target.value)}>
-              {STATUTS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className={`${fieldClass} col-span-2`}>
-            <label className={labelClass}>N° dossier</label>
-            <input className={inputClass} value={form.numeroDossier || ''} onChange={e => updateField('numeroDossier', e.target.value)} placeholder="Numéro de dossier" />
-          </div>
-        </div>
-      </div>
-
-      {/* Origine */}
-      <div className={sectionClass}>
-        <div className={sectionTitleClass}><Building className="w-3.5 h-3.5" /> Origine</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className={`${fieldClass} col-span-2`}>
-            <label className={labelClass}>Établissement d&apos;origine</label>
-            <input className={inputClass} value={form.etablissementOrigine || ''} onChange={e => updateField('etablissementOrigine', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Diplôme d&apos;origine</label>
-            <input className={inputClass} value={form.diplomeOrigine || ''} onChange={e => updateField('diplomeOrigine', e.target.value)} />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Année d&apos;obtention</label>
-            <input className={inputClass} value={form.anneeObtentionDiplome || ''} onChange={e => updateField('anneeObtentionDiplome', e.target.value)} placeholder="2023" />
-          </div>
-        </div>
-      </div>
-
-      {/* Administratif */}
-      <div className={sectionClass}>
-        <div className={sectionTitleClass}><Shield className="w-3.5 h-3.5" /> Administratif</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className={fieldClass}>
-            <label className={labelClass}>Bourse</label>
-            <input className={inputClass} value={form.bourse || ''} onChange={e => updateField('bourse', e.target.value)} placeholder="Type de bourse" />
-          </div>
-          <div className={fieldClass}>
-            <label className={labelClass}>Chambre</label>
-            <input className={inputClass} value={form.chambre || ''} onChange={e => updateField('chambre', e.target.value)} placeholder="N° chambre campus" />
-          </div>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-[rgba(255,255,255,0.06)]">
-        <button type="button" onClick={onCancel} className="px-4 py-2 text-sm rounded-md border border-[rgba(255,255,255,0.1)] text-[#6b6b8a] hover:text-[#e0e0e6] hover:border-[rgba(255,255,255,0.2)] transition-all">
-          Annuler
-        </button>
-        <button type="submit" disabled={saving} className="px-4 py-2 text-sm rounded-md bg-[#00ff88] text-[#0a0a0f] font-bold hover:bg-[#00ff88]/90 transition-all disabled:opacity-50 flex items-center gap-2">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-          {student.id ? 'Mettre à jour' : 'Créer l\'étudiant'}
-        </button>
-      </div>
-    </form>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-mono border ${style.bg} ${style.text}`}>
+      {mention}
+    </span>
   )
 }
 
-// ==================== FILIERE FORM ====================
-function FiliereForm({ filiere, onSave, onCancel }: {
-  filiere: Partial<Filiere>
-  onSave: (data: Partial<Filiere>) => void
-  onCancel: () => void
-}) {
-  const [form, setForm] = useState(filiere)
-  const [saving, setSaving] = useState(false)
+const niveauOrder = ['L1', 'L2', 'L3', 'M1', 'M2']
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.code || !form.nom) {
-      toast.error('Code et nom sont requis')
-      return
-    }
-    setSaving(true)
-    try {
-      await onSave(form)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const inputClass = "terminal-input w-full rounded-md px-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6] placeholder:text-[#4a4a6a]"
-  const labelClass = "text-xs font-mono text-[#6b6b8a] uppercase tracking-wider"
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <label className={labelClass}>Code *</label>
-        <input className={inputClass} value={form.code || ''} onChange={e => setForm(p => ({ ...p, code: e.target.value }))} placeholder="EX: INFO" required />
-      </div>
-      <div className="space-y-1.5">
-        <label className={labelClass}>Nom *</label>
-        <input className={inputClass} value={form.nom || ''} onChange={e => setForm(p => ({ ...p, nom: e.target.value }))} placeholder="Informatique" required />
-      </div>
-      <div className="space-y-1.5">
-        <label className={labelClass}>Description</label>
-        <textarea className={`${inputClass} min-h-[60px]`} value={form.description || ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Description de la filière" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label className={labelClass}>Niveau</label>
-          <select className="terminal-input w-full rounded-md px-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-            value={form.niveau || ''} onChange={e => setForm(p => ({ ...p, niveau: e.target.value }))}>
-            <option value="">—</option>
-            <option value="Licence">Licence (L1-L3)</option>
-            <option value="Master">Master (M1-M2)</option>
-            <option value="Licence & Master">Licence & Master</option>
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <label className={labelClass}>Responsable</label>
-          <input className={inputClass} value={form.responsable || ''} onChange={e => setForm(p => ({ ...p, responsable: e.target.value }))} placeholder="Nom du responsable" />
-        </div>
-      </div>
-      <div className="flex justify-end gap-3 pt-4 border-t border-[rgba(255,255,255,0.06)]">
-        <button type="button" onClick={onCancel} className="px-4 py-2 text-sm rounded-md border border-[rgba(255,255,255,0.1)] text-[#6b6b8a] hover:text-[#e0e0e6] transition-all">
-          Annuler
-        </button>
-        <button type="submit" disabled={saving} className="px-4 py-2 text-sm rounded-md bg-[#00ff88] text-[#0a0a0f] font-bold hover:bg-[#00ff88]/90 transition-all disabled:opacity-50 flex items-center gap-2">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-          {filiere.id ? 'Mettre à jour' : 'Créer la filière'}
-        </button>
-      </div>
-    </form>
-  )
+// ========================
+// API HELPERS
+// ========================
+const api = {
+  get: async (url: string) => { const r = await fetch(url); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Erreur'); return r.json() },
+  post: async (url: string, data?: unknown) => { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: data ? JSON.stringify(data) : undefined }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Erreur'); return r.json() },
+  put: async (url: string, data: unknown) => { const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Erreur'); return r.json() },
+  del: async (url: string) => { const r = await fetch(url, { method: 'DELETE' }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Erreur'); return r.json() },
 }
 
-// ==================== MAIN APP ====================
+// ========================
+// MAIN COMPONENT
+// ========================
 export default function CUKApp() {
-  // Navigation
-  const [activeView, setActiveView] = useState<View>('dashboard')
+  const [view, setView] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [mobileSidebar, setMobileSidebar] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Data
   const [students, setStudents] = useState<Student[]>([])
   const [filieres, setFilieres] = useState<Filiere[]>([])
-  const [documents, setDocuments] = useState<Document[]>([])
+  const [promotions, setPromotions] = useState<Promotion[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
+  const [loading, setLoading] = useState(false)
 
-  // Loading
-  const [loading, setLoading] = useState(true)
-
-  // Student sub-view
+  // Detail views
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null)
+  const [palmaresData, setPalmaresData] = useState<PalmaresData | null>(null)
+
+  // Dialogs
   const [showStudentForm, setShowStudentForm] = useState(false)
-  const [editingStudent, setEditingStudent] = useState<Partial<Student>>(emptyStudent)
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-
-  // Filiere sub-view
   const [showFiliereForm, setShowFiliereForm] = useState(false)
-  const [editingFiliere, setEditingFiliere] = useState<Partial<Filiere>>({})
-  const [deleteFiliereConfirm, setDeleteFiliereConfirm] = useState<string | null>(null)
+  const [showPromotionForm, setShowPromotionForm] = useState(false)
+  const [showInscriptionForm, setShowInscriptionForm] = useState(false)
+  const [showMatiereForm, setShowMatiereForm] = useState(false)
+  const [showNoteEntry, setShowNoteEntry] = useState(false)
+  const [showDocumentForm, setShowDocumentForm] = useState(false)
+  const [showClotureConfirm, setShowClotureConfirm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null)
+  const [showInscriptionDetail, setShowInscriptionDetail] = useState<Inscription | null>(null)
 
-  // Document sub-view
-  const [showDocUpload, setShowDocUpload] = useState(false)
-  const [docUploadForm, setDocUploadForm] = useState({ titre: '', type: '', etudiantId: '' })
-  const [docFile, setDocFile] = useState<File | null>(null)
-  const [uploadingDoc, setUploadingDoc] = useState(false)
+  // Editing
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null)
+  const [editingMatiere, setEditingMatiere] = useState<Matiere | null>(null)
+  const [selectedMatiereForNotes, setSelectedMatiereForNotes] = useState<Matiere | null>(null)
+
+  // Search & filters
+  const [studentSearch, setStudentSearch] = useState('')
+  const [promoFilterAnnee, setPromoFilterAnnee] = useState('')
+  const [promoFilterFiliere, setPromoFilterFiliere] = useState('')
+  const [promoFilterStatut, setPromoFilterStatut] = useState('')
+  const [palmaresPromotionId, setPalmaresPromotionId] = useState('')
   const [docFilterStudent, setDocFilterStudent] = useState('')
   const [docFilterType, setDocFilterType] = useState('')
 
-  // Search & filter
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterFiliere, setFilterFiliere] = useState('')
-  const [filterNiveau, setFilterNiveau] = useState('')
-  const [filterStatut, setFilterStatut] = useState('')
+  // Promotion detail tab
+  const [promoTab, setPromoTab] = useState('inscriptions')
 
-  // Debounced search
-  const debounceRef = useRef<NodeJS.Timeout | null>(null)
-  const debouncedSearch = useCallback((term: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => setSearchTerm(term), 300)
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [s, f, p, st] = await Promise.all([
+        api.get('/api/students'),
+        api.get('/api/filieres'),
+        api.get('/api/promotions'),
+        api.get('/api/stats'),
+      ])
+      setStudents(s)
+      setFilieres(f)
+      setPromotions(p)
+      setStats(st)
+    } catch (e) { console.error(e); toast.error('Erreur de chargement') }
+    finally { setLoading(false) }
   }, [])
 
-  // ==================== DATA FETCHING ====================
-  const fetchStats = useCallback(async () => {
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const refreshPromotions = async () => {
     try {
-      const data = await apiGet('/api/stats')
-      setStats(data)
+      const p = await api.get('/api/promotions')
+      setPromotions(p)
     } catch { /* ignore */ }
-  }, [])
-
-  const fetchStudents = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (searchTerm) params.set('search', searchTerm)
-      if (filterFiliere) params.set('filiere', filterFiliere)
-      if (filterNiveau) params.set('niveau', filterNiveau)
-      if (filterStatut) params.set('statut', filterStatut)
-      const data = await apiGet(`/api/students?${params.toString()}`)
-      setStudents(data)
-    } catch {
-      toast.error('Erreur de chargement des étudiants')
-    }
-  }, [searchTerm, filterFiliere, filterNiveau, filterStatut])
-
-  const fetchFilieres = useCallback(async () => {
-    try {
-      const data = await apiGet('/api/filieres')
-      setFilieres(data)
-    } catch {
-      toast.error('Erreur de chargement des filières')
-    }
-  }, [])
-
-  const fetchDocuments = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (docFilterStudent) params.set('etudiantId', docFilterStudent)
-      if (docFilterType) params.set('type', docFilterType)
-      const data = await apiGet(`/api/documents?${params.toString()}`)
-      setDocuments(data)
-    } catch {
-      toast.error('Erreur de chargement des documents')
-    }
-  }, [docFilterStudent, docFilterType])
-
-  // Initial load
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true)
-      await Promise.all([fetchStats(), fetchStudents(), fetchFilieres(), fetchDocuments()])
-      setLoading(false)
-    }
-    init()
-  }, [])
-
-  // Refetch on filter changes
-  useEffect(() => { fetchStudents() }, [fetchStudents])
-  useEffect(() => { fetchDocuments() }, [fetchDocuments])
-
-  // ==================== HANDLERS ====================
-  const handleSaveStudent = async (data: Partial<Student>) => {
-    try {
-      if (data.id) {
-        const updated = await apiPut(`/api/students/${data.id}`, data)
-        toast.success('Étudiant mis à jour')
-        setSelectedStudent(updated)
-      } else {
-        const created = await apiPost('/api/students', data)
-        toast.success('Étudiant créé avec succès')
-        setSelectedStudent(created)
-      }
-      setShowStudentForm(false)
-      setEditingStudent(emptyStudent)
-      fetchStudents()
-      fetchStats()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erreur')
-    }
   }
 
-  const handleDeleteStudent = async (id: string) => {
+  const refreshStudents = async () => {
     try {
-      await apiDelete(`/api/students/${id}`)
-      toast.success('Étudiant supprimé')
-      setDeleteConfirm(null)
-      setSelectedStudent(null)
-      fetchStudents()
-      fetchStats()
-    } catch {
-      toast.error('Erreur lors de la suppression')
-    }
+      const s = await api.get('/api/students')
+      setStudents(s)
+    } catch { /* ignore */ }
   }
 
-  const handleSaveFiliere = async (data: Partial<Filiere>) => {
+  const refreshStats = async () => {
     try {
-      if (data.id) {
-        await apiPut(`/api/filieres/${data.id}`, data)
-        toast.success('Filière mise à jour')
-      } else {
-        await apiPost('/api/filieres', data)
-        toast.success('Filière créée avec succès')
-      }
-      setShowFiliereForm(false)
-      setEditingFiliere({})
-      fetchFilieres()
-      fetchStats()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erreur')
-    }
+      const st = await api.get('/api/stats')
+      setStats(st)
+    } catch { /* ignore */ }
   }
 
-  const handleDeleteFiliere = async (id: string) => {
+  const refreshSelectedPromotion = async () => {
+    if (!selectedPromotion) return
     try {
-      await apiDelete(`/api/filieres/${id}`)
-      toast.success('Filière supprimée')
-      setDeleteFiliereConfirm(null)
-      fetchFilieres()
-      fetchStats()
-    } catch {
-      toast.error('Erreur lors de la suppression')
-    }
+      const p = await api.get(`/api/promotions/${selectedPromotion.id}`)
+      setSelectedPromotion(p)
+    } catch { /* ignore */ }
   }
 
-  const handleUploadDocument = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!docUploadForm.titre || !docUploadForm.type || !docUploadForm.etudiantId || !docFile) {
-      toast.error('Tous les champs sont requis')
-      return
-    }
-    setUploadingDoc(true)
+  const refreshSelectedStudent = async () => {
+    if (!selectedStudent) return
     try {
-      const formData = new FormData()
-      formData.append('titre', docUploadForm.titre)
-      formData.append('type', docUploadForm.type)
-      formData.append('etudiantId', docUploadForm.etudiantId)
-      formData.append('fichier', docFile)
-      const res = await fetch('/api/documents', { method: 'POST', body: formData })
-      if (!res.ok) throw new Error('Erreur')
-      toast.success('Document ajouté')
-      setShowDocUpload(false)
-      setDocUploadForm({ titre: '', type: '', etudiantId: '' })
-      setDocFile(null)
-      fetchDocuments()
-      fetchStats()
-      if (selectedStudent?.id === docUploadForm.etudiantId) {
-        const updated = await apiGet(`/api/students/${selectedStudent.id}`)
-        setSelectedStudent(updated)
-      }
-    } catch {
-      toast.error('Erreur lors de l\'ajout du document')
-    } finally {
-      setUploadingDoc(false)
-    }
+      const s = await api.get(`/api/students/${selectedStudent.id}`)
+      setSelectedStudent(s)
+    } catch { /* ignore */ }
   }
 
-  const handleDeleteDocument = async (id: string) => {
+  const loadPalmares = async (promotionId: string) => {
     try {
-      await apiDelete(`/api/documents/${id}`)
-      toast.success('Document supprimé')
-      fetchDocuments()
-      fetchStats()
-      if (selectedStudent) {
-        const updated = await apiGet(`/api/students/${selectedStudent.id}`)
-        setSelectedStudent(updated)
-      }
-    } catch {
-      toast.error('Erreur lors de la suppression')
-    }
+      const data = await api.get(`/api/palmares?promotionId=${promotionId}`)
+      setPalmaresData(data)
+    } catch (e) { console.error(e); toast.error('Erreur de chargement du palmarès') }
   }
 
-  // ==================== SIDEBAR ITEMS ====================
+  // Navigation
   const navItems = [
-    { id: 'dashboard' as View, label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'students' as View, label: 'Étudiants', icon: Users },
-    { id: 'filieres' as View, label: 'Filières', icon: GraduationCap },
-    { id: 'documents' as View, label: 'Documents', icon: FileText },
+    { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { key: 'students', label: 'Étudiants', icon: Users },
+    { key: 'promotions', label: 'Promotions', icon: GraduationCap },
+    { key: 'palmares', label: 'Palmarès', icon: Trophy },
+    { key: 'documents', label: 'Documents', icon: FileText },
   ]
 
-  // ==================== RENDER HELPERS ====================
-  const getStatusColor = (statut: string | null) => {
-    switch (statut) {
-      case 'Actif': return '#00ff88'
-      case 'Inactif': return '#ff6b6b'
-      case 'Diplômé': return '#00d4ff'
-      case 'Renvoyé': return '#ff4444'
-      default: return '#6b6b8a'
-    }
+  const navigateTo = (key: string) => {
+    setView(key)
+    setSelectedStudent(null)
+    setSelectedPromotion(null)
+    setMobileMenuOpen(false)
   }
 
-  // ==================== SIDEBAR ====================
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className="p-4 border-b border-[rgba(255,255,255,0.06)]">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-md overflow-hidden flex-shrink-0">
-            <img src="/cuk-logo.png" alt="CUK" className="w-full h-full object-cover" />
-          </div>
-          {sidebarOpen && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="overflow-hidden">
-              <div className="text-[#00ff88] font-bold text-lg font-mono neon-text">CUK</div>
-              <div className="text-[10px] text-[#6b6b8a] font-mono whitespace-nowrap">Koulamoutou</div>
-            </motion.div>
-          )}
-        </div>
-      </div>
+  const years = Array.from(new Set(promotions.map(p => p.anneeScolaire))).sort().reverse()
+  const docTypes = ['Acte de naissance', 'Relevé de notes', 'Diplôme', 'Certificat', 'Photo', 'Autre']
 
-      {/* Nav */}
-      <nav className="flex-1 py-3 px-2 space-y-1">
+  // ========================
+  // SIDEBAR
+  // ========================
+  const Sidebar = () => (
+    <aside className={`fixed lg:static inset-y-0 left-0 z-40 flex flex-col border-r border-[rgba(255,255,255,0.06)] bg-[#0d0d14] transition-all duration-300 ${sidebarOpen ? 'w-60' : 'w-16'} ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <div className="flex items-center gap-3 p-4 border-b border-[rgba(255,255,255,0.06)]">
+        <div className="w-8 h-8 rounded-lg bg-[#00ff88]/10 flex items-center justify-center flex-shrink-0">
+          <GraduationCap className="w-5 h-5 text-[#00ff88]" />
+        </div>
+        {sidebarOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="overflow-hidden">
+            <h1 className="text-sm font-bold text-[#00ff88] neon-text tracking-wider">CUK</h1>
+            <p className="text-[10px] text-[#6b6b8a]">Koulamoutou</p>
+          </motion.div>
+        )}
+      </div>
+      <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
         {navItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => { setActiveView(item.id); setMobileSidebar(false); setSelectedStudent(null) }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-mono transition-all duration-200 group ${
-              activeView === item.id
-                ? 'bg-[rgba(0,255,136,0.08)] text-[#00ff88] border-l-2 border-[#00ff88]'
-                : 'text-[#6b6b8a] hover:text-[#e0e0e6] hover:bg-[rgba(255,255,255,0.03)]'
-            }`}
-          >
-            <item.icon className={`w-4.5 h-4.5 flex-shrink-0 ${activeView === item.id ? 'text-[#00ff88]' : 'text-[#6b6b8a] group-hover:text-[#e0e0e6]'}`} />
-            {sidebarOpen && <span className="truncate">{item.label}</span>}
+          <button key={item.key} onClick={() => navigateTo(item.key)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-mono transition-all duration-200 ${view === item.key ? 'bg-[#00ff88]/10 text-[#00ff88] neon-border' : 'text-[#6b6b8a] hover:text-[#e0e0e6] hover:bg-[#1a1a2e]'}`}>
+            <item.icon className="w-4 h-4 flex-shrink-0" />
+            {sidebarOpen && <span>{item.label}</span>}
           </button>
         ))}
       </nav>
-
-      {/* Footer */}
-      {sidebarOpen && (
-        <div className="p-4 border-t border-[rgba(255,255,255,0.06)]">
-          <div className="text-[10px] text-[#4a4a6a] font-mono">
-            <div className="text-[#6b6b8a] mb-1">v1.0.0</div>
-            <div>Centre Universitaire</div>
-            <div className="text-[#00ff88]">de Koulamoutou</div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  // ==================== DASHBOARD VIEW ====================
-  const DashboardView = () => (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold font-mono text-[#e0e0e6]">
-            <span className="text-[#00ff88] neon-text">$</span> Dashboard
-          </h1>
-          <p className="text-sm text-[#6b6b8a] font-mono mt-1">Bienvenue — Centre Universitaire de Koulamoutou</p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => { setEditingStudent(emptyStudent); setShowStudentForm(true) }}
-            className="px-3 py-2 text-xs rounded-md bg-[#00ff88] text-[#0a0a0f] font-bold hover:bg-[#00ff88]/90 transition-all flex items-center gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Nouvel Étudiant
-          </button>
-          <button onClick={() => { setEditingFiliere({}); setShowFiliereForm(true) }}
-            className="px-3 py-2 text-xs rounded-md border border-[rgba(0,212,255,0.3)] text-[#00d4ff] hover:bg-[rgba(0,212,255,0.1)] transition-all flex items-center gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Nouvelle Filière
-          </button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Étudiants" value={stats?.totalStudents || 0} icon={Users} color="#00ff88" delay={0} />
-        <StatCard title="Filières" value={stats?.totalFilieres || 0} icon={GraduationCap} color="#00d4ff" delay={0.1} />
-        <StatCard title="Documents" value={stats?.totalDocuments || 0} icon={FileText} color="#ffd93d" delay={0.2} />
-        <StatCard title="Actifs" value={stats?.activeStudents || 0} icon={UserCheck} color="#c084fc" delay={0.3} />
-      </div>
-
-      {/* Stats Details */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* By Filiere */}
-        <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-          <h3 className="text-xs font-mono uppercase tracking-widest text-[#00d4ff] mb-3 flex items-center gap-2">
-            <BookOpen className="w-3.5 h-3.5" /> Par Filière
-          </h3>
-          {stats?.byFiliere.length ? (
-            <div className="space-y-2">
-              {stats.byFiliere.map((item, i) => (
-                <div key={i} className="flex items-center justify-between text-sm font-mono">
-                  <span className="text-[#e0e0e6] truncate">{item.name || 'Non défini'}</span>
-                  <span className="text-[#00d4ff] font-bold">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-xs text-[#4a4a6a] font-mono">Aucune donnée</div>
-          )}
-        </div>
-
-        {/* By Niveau */}
-        <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-          <h3 className="text-xs font-mono uppercase tracking-widest text-[#ffd93d] mb-3 flex items-center gap-2">
-            <TrendingUp className="w-3.5 h-3.5" /> Par Niveau
-          </h3>
-          {stats?.byNiveau.length ? (
-            <div className="space-y-2">
-              {stats.byNiveau.map((item, i) => (
-                <div key={i} className="flex items-center justify-between text-sm font-mono">
-                  <span className="text-[#e0e0e6]">{item.name || 'Non défini'}</span>
-                  <span className="text-[#ffd93d] font-bold">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-xs text-[#4a4a6a] font-mono">Aucune donnée</div>
-          )}
-        </div>
-
-        {/* By Statut */}
-        <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-          <h3 className="text-xs font-mono uppercase tracking-widest text-[#c084fc] mb-3 flex items-center gap-2">
-            <Shield className="w-3.5 h-3.5" /> Par Statut
-          </h3>
-          {stats?.byStatut.length ? (
-            <div className="space-y-2">
-              {stats.byStatut.map((item, i) => (
-                <div key={i} className="flex items-center justify-between text-sm font-mono">
-                  <span className="text-[#e0e0e6]">{item.name || 'Non défini'}</span>
-                  <span className="font-bold" style={{ color: getStatusColor(item.name) }}>{item.count}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-xs text-[#4a4a6a] font-mono">Aucune donnée</div>
-          )}
-        </div>
-      </div>
-
-      {/* Recent Students */}
-      <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xs font-mono uppercase tracking-widest text-[#00ff88] flex items-center gap-2">
-            <Users className="w-3.5 h-3.5" /> Étudiants Récents
-          </h3>
-          <button onClick={() => setActiveView('students')} className="text-xs text-[#6b6b8a] hover:text-[#00ff88] transition-colors font-mono">
-            Voir tout →
-          </button>
-        </div>
-        {stats?.recentStudents.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm font-mono">
-              <thead>
-                <tr className="border-b border-[rgba(255,255,255,0.06)]">
-                  <th className="text-left py-2 px-3 text-[#6b6b8a] text-xs uppercase">Matricule</th>
-                  <th className="text-left py-2 px-3 text-[#6b6b8a] text-xs uppercase">Nom</th>
-                  <th className="text-left py-2 px-3 text-[#6b6b8a] text-xs uppercase">Filière</th>
-                  <th className="text-left py-2 px-3 text-[#6b6b8a] text-xs uppercase">Niveau</th>
-                  <th className="text-left py-2 px-3 text-[#6b6b8a] text-xs uppercase">Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.recentStudents.map(s => (
-                  <tr key={s.id} className="border-b border-[rgba(255,255,255,0.03)] hover:bg-[rgba(0,255,136,0.03)] transition-colors cursor-pointer"
-                    onClick={() => { setActiveView('students'); setSelectedStudent(s) }}>
-                    <td className="py-2.5 px-3 text-[#00d4ff]">{s.matricule}</td>
-                    <td className="py-2.5 px-3 text-[#e0e0e6]">{s.nom} {s.prenom}</td>
-                    <td className="py-2.5 px-3 text-[#6b6b8a]">{s.filiere || '—'}</td>
-                    <td className="py-2.5 px-3 text-[#6b6b8a]">{s.niveau || '—'}</td>
-                    <td className="py-2.5 px-3">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: getStatusColor(s.statut) }} />
-                        <span style={{ color: getStatusColor(s.statut) }}>{s.statut || '—'}</span>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <Users className="w-10 h-10 text-[#2a2a4a] mx-auto mb-3" />
-            <p className="text-sm text-[#4a4a6a] font-mono">Aucun étudiant enregistré</p>
-            <button onClick={() => { setEditingStudent(emptyStudent); setShowStudentForm(true) }}
-              className="mt-3 text-xs text-[#00ff88] hover:underline font-mono">
-              + Ajouter le premier étudiant
-            </button>
+      <div className="p-3 border-t border-[rgba(255,255,255,0.06)]">
+        {sidebarOpen && (
+          <div className="text-[10px] text-[#6b6b8a] font-mono">
+            <p>v2.0 — Gestion Étudiants</p>
+            <p>© CUK 2025</p>
           </div>
         )}
       </div>
-    </div>
+    </aside>
   )
 
-  // ==================== STUDENT DETAIL VIEW ====================
-  const StudentDetailView = () => {
-    if (!selectedStudent) return null
-    const s = selectedStudent
-
-    const InfoRow = ({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | null | undefined }) => (
-      <div className="flex items-start gap-2.5 py-1.5">
-        <Icon className="w-3.5 h-3.5 text-[#6b6b8a] mt-0.5 flex-shrink-0" />
-        <div>
-          <div className="text-[10px] text-[#4a4a6a] font-mono uppercase tracking-wider">{label}</div>
-          <div className="text-sm text-[#e0e0e6] font-mono">{value || '—'}</div>
+  // ========================
+  // TOP BAR
+  // ========================
+  const TopBar = () => (
+    <header className="h-14 border-b border-[rgba(255,255,255,0.06)] flex items-center justify-between px-4 bg-[#0d0d14]/80 backdrop-blur-sm">
+      <div className="flex items-center gap-3">
+        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="lg:hidden text-[#6b6b8a] hover:text-[#00ff88]">
+          <Menu className="w-5 h-5" />
+        </button>
+        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="hidden lg:block text-[#6b6b8a] hover:text-[#00ff88]">
+          <Menu className="w-5 h-5" />
+        </button>
+        <div className="flex items-center gap-2 text-xs font-mono text-[#6b6b8a]">
+          <span className="text-[#00ff88]">$</span>
+          <span>cuk</span>
+          <span className="text-[#6b6b8a]">/</span>
+          <span className="text-[#e0e0e6]">{navItems.find(n => n.key === view)?.label || 'Dashboard'}</span>
+          {selectedStudent && <><span className="text-[#6b6b8a]">/</span><span className="text-[#00d4ff]">{selectedStudent.nom}</span></>}
+          {selectedPromotion && <><span className="text-[#6b6b8a]">/</span><span className="text-[#00d4ff]">{selectedPromotion.filiere?.nom} {selectedPromotion.niveau}</span></>}
         </div>
       </div>
-    )
+      <div className="flex items-center gap-3">
+        <button onClick={() => { fetchData(); toast.success('Données actualisées') }} className="p-1.5 rounded-lg text-[#6b6b8a] hover:text-[#00ff88] hover:bg-[#00ff88]/10 transition-colors">
+          <RefreshCw className="w-4 h-4" />
+        </button>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1a1a2e] border border-[rgba(255,255,255,0.06)] text-xs font-mono text-[#6b6b8a]">
+          <Calendar className="w-3 h-3" />
+          <span>2024-2025</span>
+        </div>
+      </div>
+    </header>
+  )
+
+  // ========================
+  // STAT CARD
+  // ========================
+  const StatCard = ({ icon: Icon, label, value, color, sub }: { icon: React.ElementType; label: string; value: number | string; color: string; sub?: string }) => (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)] hover:border-[rgba(0,255,136,0.2)] transition-all duration-300">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-mono text-[#6b6b8a] mb-1">{label}</p>
+          <p className={`text-2xl font-bold font-mono ${color}`}>{value}</p>
+          {sub && <p className="text-[10px] font-mono text-[#6b6b8a] mt-1">{sub}</p>}
+        </div>
+        <div className={`p-2 rounded-lg ${color === 'text-[#00ff88]' ? 'bg-[#00ff88]/10' : color === 'text-[#00d4ff]' ? 'bg-[#00d4ff]/10' : color === 'text-[#ffaa00]' ? 'bg-[#ffaa00]/10' : 'bg-[#ff4444]/10'}`}>
+          <Icon className={`w-4 h-4 ${color}`} />
+        </div>
+      </div>
+    </motion.div>
+  )
+
+  // ========================
+  // DASHBOARD VIEW
+  // ========================
+  const DashboardView = () => {
+    if (!stats) return <div className="flex items-center justify-center h-64 text-[#6b6b8a] font-mono text-sm">Chargement...</div>
+
+    const dossierStats = stats.dossierByStatus.length > 0 ? stats.dossierByStatus : [
+      { statut: 'Complet', count: 0 }, { statut: 'Incomplet', count: 0 },
+      { statut: 'En attente', count: 0 }, { statut: 'Validé', count: 0 }, { statut: 'Rejeté', count: 0 },
+    ]
 
     return (
-      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="animate-fade-in">
-        <button onClick={() => setSelectedStudent(null)}
-          className="flex items-center gap-1.5 text-xs text-[#6b6b8a] hover:text-[#00ff88] transition-colors font-mono mb-4">
-          <ArrowLeft className="w-3.5 h-3.5" /> Retour à la liste
-        </button>
-
-        {/* Header */}
-        <div className="neon-border rounded-lg p-6 bg-[#12121a] mb-4">
-          <div className="flex items-start gap-5">
-            <div className="w-20 h-20 rounded-lg overflow-hidden border-2 border-[rgba(0,255,136,0.2)] bg-[#0a0a0f] flex-shrink-0">
-              {s.photo ? (
-                <img src={s.photo} alt={`${s.prenom} ${s.nom}`} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <UserCircle className="w-10 h-10 text-[#2a2a4a]" />
-                </div>
-              )}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-1">
-                <h2 className="text-xl font-bold font-mono text-[#e0e0e6]">{s.nom} {s.prenom}</h2>
-                <span className="px-2 py-0.5 text-[10px] font-mono rounded-full border"
-                  style={{ color: getStatusColor(s.statut), borderColor: getStatusColor(s.statut) + '40', background: getStatusColor(s.statut) + '10' }}>
-                  {s.statut || '—'}
-                </span>
-              </div>
-              <div className="text-sm text-[#00d4ff] font-mono mb-2">{s.matricule}</div>
-              <div className="flex gap-4 text-xs text-[#6b6b8a] font-mono">
-                {s.filiere && <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{s.filiere}</span>}
-                {s.niveau && <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{s.niveau}</span>}
-                {s.anneeInscription && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{s.anneeInscription}</span>}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => { setEditingStudent(s); setShowStudentForm(true) }}
-                className="p-2 rounded-md border border-[rgba(0,255,136,0.3)] text-[#00ff88] hover:bg-[rgba(0,255,136,0.1)] transition-all">
-                <Edit className="w-4 h-4" />
-              </button>
-              <button onClick={() => setDeleteConfirm(s.id)}
-                className="p-2 rounded-md border border-[rgba(255,68,68,0.3)] text-[#ff4444] hover:bg-[rgba(255,68,68,0.1)] transition-all">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard icon={Users} label="Étudiants inscrits" value={stats.totalStudents} color="text-[#00ff88]" sub={`${stats.totalInscriptions} inscriptions`} />
+          <StatCard icon={GraduationCap} label="Promotions actives" value={stats.activePromotions} color="text-[#00d4ff]" sub={`${stats.closedPromotions} clôturées`} />
+          <StatCard icon={FolderOpen} label="Dossiers complets" value={stats.dossierByStatus.find(d => d.statut === 'Complet')?.count || 0} color="text-[#ffaa00]" sub="et validés" />
+          <StatCard icon={TrendingUp} label="Taux de réussite" value={`${stats.tauxReussite}%`} color="text-[#00ff88]" sub="dossiers traités" />
         </div>
 
-        {/* Info Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-          {/* Identité */}
-          <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-            <h3 className="text-xs font-mono uppercase tracking-widest text-[#00ff88] mb-3 flex items-center gap-2">
-              <User className="w-3.5 h-3.5" /> Identité
-            </h3>
-            <InfoRow icon={Hash} label="Matricule" value={s.matricule} />
-            <InfoRow icon={Calendar} label="Date de naissance" value={s.dateNaissance} />
-            <InfoRow icon={MapPin} label="Lieu de naissance" value={s.lieuNaissance} />
-            <InfoRow icon={User} label="Sexe" value={s.sexe} />
-            <InfoRow icon={MapPin} label="Nationalité" value={s.nationalite} />
-          </div>
-
-          {/* Contact */}
-          <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-            <h3 className="text-xs font-mono uppercase tracking-widest text-[#00d4ff] mb-3 flex items-center gap-2">
-              <Phone className="w-3.5 h-3.5" /> Contact
-            </h3>
-            <InfoRow icon={Phone} label="Téléphone" value={s.telephone} />
-            <InfoRow icon={Mail} label="Email" value={s.email} />
-            <InfoRow icon={MapPin} label="Adresse" value={s.adresse} />
-          </div>
-
-          {/* Parents */}
-          <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-            <h3 className="text-xs font-mono uppercase tracking-widest text-[#ffd93d] mb-3 flex items-center gap-2">
-              <Users className="w-3.5 h-3.5" /> Parents / Tuteur
-            </h3>
-            <InfoRow icon={User} label="Nom du père" value={s.nomPere} />
-            <InfoRow icon={Phone} label="Tél. père" value={s.telephonePere} />
-            <InfoRow icon={User} label="Nom de la mère" value={s.nomMere} />
-            <InfoRow icon={Phone} label="Tél. mère" value={s.telephoneMere} />
-            <InfoRow icon={MapPin} label="Adresse parents" value={s.adresseParents} />
-            <InfoRow icon={User} label="Personne contact" value={s.personneContact} />
-            <InfoRow icon={Phone} label="Tél. contact" value={s.telephoneContact} />
-            <InfoRow icon={User} label="Lien parenté" value={s.lienParente} />
-          </div>
-
-          {/* Académique */}
-          <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-            <h3 className="text-xs font-mono uppercase tracking-widest text-[#c084fc] mb-3 flex items-center gap-2">
-              <GraduationCap className="w-3.5 h-3.5" /> Académique
-            </h3>
-            <InfoRow icon={BookOpen} label="Filière" value={s.filiere} />
-            <InfoRow icon={TrendingUp} label="Niveau" value={s.niveau} />
-            <InfoRow icon={Calendar} label="Année inscription" value={s.anneeInscription} />
-            <InfoRow icon={Shield} label="Statut" value={s.statut} />
-            <InfoRow icon={Hash} label="N° dossier" value={s.numeroDossier} />
-          </div>
-
-          {/* Origine */}
-          <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-            <h3 className="text-xs font-mono uppercase tracking-widest text-[#ff6b6b] mb-3 flex items-center gap-2">
-              <Building className="w-3.5 h-3.5" /> Origine
-            </h3>
-            <InfoRow icon={Building} label="Établissement" value={s.etablissementOrigine} />
-            <InfoRow icon={Award} label="Diplôme" value={s.diplomeOrigine} />
-            <InfoRow icon={Calendar} label="Année obtention" value={s.anneeObtentionDiplome} />
-          </div>
-
-          {/* Administratif */}
-          <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-            <h3 className="text-xs font-mono uppercase tracking-widest text-[#00ff88] mb-3 flex items-center gap-2">
-              <Briefcase className="w-3.5 h-3.5" /> Administratif
-            </h3>
-            <InfoRow icon={Award} label="Bourse" value={s.bourse} />
-            <InfoRow icon={Home} label="Chambre" value={s.chambre} />
-          </div>
-        </div>
-
-        {/* Documents */}
-        <div className="neon-border rounded-lg p-4 bg-[#12121a]">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-mono uppercase tracking-widest text-[#00d4ff] flex items-center gap-2">
-              <FileText className="w-3.5 h-3.5" /> Documents ({s.documents?.length || 0})
-            </h3>
-            <button onClick={() => { setShowDocUpload(true); setDocUploadForm(prev => ({ ...prev, etudiantId: s.id })) }}
-              className="text-xs text-[#00ff88] hover:underline font-mono flex items-center gap-1">
-              <Plus className="w-3 h-3" /> Ajouter
-            </button>
-          </div>
-          {s.documents?.length ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {s.documents.map(doc => (
-                <div key={doc.id} className="p-3 rounded-md border border-[rgba(255,255,255,0.06)] bg-[#0a0a0f] hover:border-[rgba(0,212,255,0.3)] transition-all group">
-                  <div className="flex items-start gap-2">
-                    <File className="w-4 h-4 text-[#00d4ff] mt-0.5 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-[#e0e0e6] font-mono truncate">{doc.titre}</div>
-                      <div className="text-[10px] text-[#4a4a6a] font-mono mt-0.5">{doc.type} • {doc.tailleFichier || '—'}</div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Dossier Status Chart */}
+          <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+            <h3 className="text-sm font-mono text-[#e0e0e6] mb-4 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-[#00d4ff]" /> Statut des dossiers</h3>
+            <div className="space-y-3">
+              {dossierStats.map(d => {
+                const maxCount = Math.max(...dossierStats.map(x => x.count), 1)
+                const pct = (d.count / maxCount) * 100
+                const colors: Record<string, string> = { 'Complet': '#00ff88', 'Incomplet': '#ff8800', 'En attente': '#ffaa00', 'Validé': '#00d4ff', 'Rejeté': '#ff4444', 'Non défini': '#6b6b8a' }
+                return (
+                  <div key={d.statut}>
+                    <div className="flex justify-between text-xs font-mono mb-1">
+                      <span className="text-[#6b6b8a]">{d.statut}</span>
+                      <span className="text-[#e0e0e6]">{d.count}</span>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <a href={doc.fichier} target="_blank" rel="noopener noreferrer"
-                        className="p-1 rounded hover:bg-[rgba(0,212,255,0.1)] text-[#00d4ff]">
-                        <Download className="w-3.5 h-3.5" />
-                      </a>
-                      <button onClick={() => handleDeleteDocument(doc.id)}
-                        className="p-1 rounded hover:bg-[rgba(255,68,68,0.1)] text-[#ff4444]">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="h-2 rounded-full bg-[#1a1a2e] overflow-hidden">
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8 }} className="h-full rounded-full" style={{ backgroundColor: colors[d.statut] || '#6b6b8a' }} />
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
-          ) : (
-            <div className="text-center py-6">
-              <FolderOpen className="w-8 h-8 text-[#2a2a4a] mx-auto mb-2" />
-              <p className="text-xs text-[#4a4a6a] font-mono">Aucun document</p>
-            </div>
-          )}
-        </div>
-      </motion.div>
-    )
-  }
+          </div>
 
-  // ==================== STUDENTS VIEW ====================
-  const StudentsView = () => {
-    if (selectedStudent) return <StudentDetailView />
-
-    return (
-      <div className="space-y-4 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold font-mono text-[#e0e0e6]">
-            <span className="text-[#00ff88] neon-text">$</span> Étudiants
-          </h1>
-          <button onClick={() => { setEditingStudent(emptyStudent); setShowStudentForm(true) }}
-            className="px-3 py-2 text-xs rounded-md bg-[#00ff88] text-[#0a0a0f] font-bold hover:bg-[#00ff88]/90 transition-all flex items-center gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Nouvel Étudiant
-          </button>
-        </div>
-
-        {/* Search & Filters */}
-        <div className="neon-border rounded-lg p-3 bg-[#12121a]">
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 text-[#6b6b8a] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                className="terminal-input w-full rounded-md pl-9 pr-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6] placeholder:text-[#4a4a6a]"
-                placeholder="Rechercher (matricule, nom, prénom...)"
-                onChange={e => debouncedSearch(e.target.value)}
-              />
-            </div>
-            <select className="terminal-input rounded-md px-3 py-2 text-xs bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-              value={filterFiliere} onChange={e => setFilterFiliere(e.target.value)}>
-              <option value="">Toutes filières</option>
-              {filieres.map(f => <option key={f.id} value={f.nom}>{f.nom}</option>)}
-            </select>
-            <select className="terminal-input rounded-md px-3 py-2 text-xs bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-              value={filterNiveau} onChange={e => setFilterNiveau(e.target.value)}>
-              <option value="">Tous niveaux</option>
-              {NIVEAUX.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <select className="terminal-input rounded-md px-3 py-2 text-xs bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-              value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
-              <option value="">Tous statuts</option>
-              {STATUTS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            {(filterFiliere || filterNiveau || filterStatut || searchTerm) && (
-              <button onClick={() => { setFilterFiliere(''); setFilterNiveau(''); setFilterStatut(''); setSearchTerm('') }}
-                className="text-xs text-[#ff6b6b] hover:underline font-mono flex items-center gap-1">
-                <X className="w-3 h-3" /> Réinitialiser
-              </button>
+          {/* Filiere Distribution */}
+          <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+            <h3 className="text-sm font-mono text-[#e0e0e6] mb-4 flex items-center gap-2"><BookOpen className="w-4 h-4 text-[#00ff88]" /> Répartition par filière</h3>
+            {Object.keys(stats.filiereCounts).length === 0 ? (
+              <p className="text-xs font-mono text-[#6b6b8a]">Aucune donnée</p>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(stats.filiereCounts).map(([name, count], i) => {
+                  const maxC = Math.max(...Object.values(stats.filiereCounts), 1)
+                  const pct = (count / maxC) * 100
+                  const colors = ['#00ff88', '#00d4ff', '#ff6b6b', '#ffd93d', '#c084fc']
+                  return (
+                    <div key={name}>
+                      <div className="flex justify-between text-xs font-mono mb-1">
+                        <span className="text-[#6b6b8a]">{name}</span>
+                        <span className="text-[#e0e0e6]">{count}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-[#1a1a2e] overflow-hidden">
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, delay: i * 0.1 }} className="h-full rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         </div>
 
-        {/* Table */}
-        <div className="neon-border rounded-lg bg-[#12121a] overflow-hidden">
-          {students.length ? (
+        {/* Recent Inscriptions */}
+        <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-mono text-[#e0e0e6] flex items-center gap-2"><Clock className="w-4 h-4 text-[#ffaa00]" /> Inscriptions récentes</h3>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowPromotionForm(true) }} className="px-3 py-1.5 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors flex items-center gap-1">
+                <Plus className="w-3 h-3" /> Promotion
+              </button>
+              <button onClick={() => { setShowStudentForm(true); setEditingStudent(null) }} className="px-3 py-1.5 text-xs font-mono rounded-lg bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20 hover:bg-[#00d4ff]/20 transition-colors flex items-center gap-1">
+                <Plus className="w-3 h-3" /> Étudiant
+              </button>
+            </div>
+          </div>
+          {stats.recentInscriptions.length === 0 ? (
+            <p className="text-xs font-mono text-[#6b6b8a] text-center py-8">Aucune inscription pour le moment</p>
+          ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm font-mono">
-                <thead>
-                  <tr className="border-b border-[rgba(255,255,255,0.06)]">
-                    <th className="text-left py-3 px-4 text-[#6b6b8a] text-xs uppercase">Photo</th>
-                    <th className="text-left py-3 px-4 text-[#6b6b8a] text-xs uppercase">Matricule</th>
-                    <th className="text-left py-3 px-4 text-[#6b6b8a] text-xs uppercase">Nom Complet</th>
-                    <th className="text-left py-3 px-4 text-[#6b6b8a] text-xs uppercase">Filière</th>
-                    <th className="text-left py-3 px-4 text-[#6b6b8a] text-xs uppercase">Niveau</th>
-                    <th className="text-left py-3 px-4 text-[#6b6b8a] text-xs uppercase">Statut</th>
-                    <th className="text-left py-3 px-4 text-[#6b6b8a] text-xs uppercase">Actions</th>
-                  </tr>
-                </thead>
+              <table className="w-full text-xs font-mono">
+                <thead><tr className="text-[#6b6b8a] border-b border-[rgba(255,255,255,0.06)]">
+                  <th className="py-2 px-3 text-left">Matricule</th><th className="py-2 px-3 text-left">Nom</th><th className="py-2 px-3 text-left">Promotion</th><th className="py-2 px-3 text-left">Dossier</th>
+                </tr></thead>
                 <tbody>
-                  {students.map((s, i) => (
-                    <tr key={s.id}
-                      className={`border-b border-[rgba(255,255,255,0.03)] hover:bg-[rgba(0,255,136,0.03)] transition-colors cursor-pointer ${i % 2 === 1 ? 'bg-[rgba(255,255,255,0.01)]' : ''}`}
-                      onClick={() => setSelectedStudent(s)}>
-                      <td className="py-2.5 px-4">
-                        <div className="w-8 h-8 rounded-md overflow-hidden bg-[#0a0a0f] border border-[rgba(255,255,255,0.06)]">
-                          {s.photo ? (
-                            <img src={s.photo} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <UserCircle className="w-5 h-5 text-[#2a2a4a]" />
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 text-[#00d4ff]">{s.matricule}</td>
-                      <td className="py-2.5 px-4 text-[#e0e0e6]">{s.nom} {s.prenom}</td>
-                      <td className="py-2.5 px-4 text-[#6b6b8a]">{s.filiere || '—'}</td>
-                      <td className="py-2.5 px-4 text-[#6b6b8a]">{s.niveau || '—'}</td>
-                      <td className="py-2.5 px-4">
-                        <span className="inline-flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: getStatusColor(s.statut) }} />
-                          <span style={{ color: getStatusColor(s.statut) }}>{s.statut || '—'}</span>
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                          <button onClick={() => setSelectedStudent(s)}
-                            className="p-1.5 rounded hover:bg-[rgba(0,212,255,0.1)] text-[#6b6b8a] hover:text-[#00d4ff] transition-all">
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => { setEditingStudent(s); setShowStudentForm(true) }}
-                            className="p-1.5 rounded hover:bg-[rgba(0,255,136,0.1)] text-[#6b6b8a] hover:text-[#00ff88] transition-all">
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => setDeleteConfirm(s.id)}
-                            className="p-1.5 rounded hover:bg-[rgba(255,68,68,0.1)] text-[#6b6b8a] hover:text-[#ff4444] transition-all">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                  {stats.recentInscriptions.slice(0, 8).map(ins => (
+                    <tr key={ins.id} className="border-b border-[rgba(255,255,255,0.03)] hover:bg-[#1a1a2e]/50 transition-colors">
+                      <td className="py-2 px-3 text-[#00ff88]">{ins.student?.matricule}</td>
+                      <td className="py-2 px-3 text-[#e0e0e6]">{ins.student?.nom} {ins.student?.prenom}</td>
+                      <td className="py-2 px-3 text-[#e0e0e6]">{ins.promotion?.filiere?.nom} {ins.promotion?.niveau}</td>
+                      <td className="py-2 px-3">{dossierBadge(ins.statutDossier)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div className="text-center py-16">
-              <Users className="w-14 h-14 text-[#2a2a4a] mx-auto mb-4" />
-              <p className="text-lg text-[#4a4a6a] font-mono mb-2">Aucun étudiant trouvé</p>
-              <p className="text-sm text-[#3a3a5a] font-mono mb-4">
-                {searchTerm || filterFiliere || filterNiveau || filterStatut
-                  ? 'Essayez de modifier vos critères de recherche'
-                  : 'Commencez par ajouter votre premier étudiant'}
-              </p>
-              {!searchTerm && !filterFiliere && !filterNiveau && !filterStatut && (
-                <button onClick={() => { setEditingStudent(emptyStudent); setShowStudentForm(true) }}
-                  className="px-4 py-2 text-sm rounded-md bg-[#00ff88] text-[#0a0a0f] font-bold hover:bg-[#00ff88]/90 transition-all inline-flex items-center gap-2">
-                  <Plus className="w-4 h-4" /> Ajouter un étudiant
-                </button>
-              )}
-            </div>
           )}
         </div>
       </div>
     )
   }
 
-  // ==================== FILIERES VIEW ====================
-  const FilieresView = () => (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold font-mono text-[#e0e0e6]">
-          <span className="text-[#00d4ff] cyan-text">$</span> Filières
-        </h1>
-        <button onClick={() => { setEditingFiliere({}); setShowFiliereForm(true) }}
-          className="px-3 py-2 text-xs rounded-md bg-[#00d4ff] text-[#0a0a0f] font-bold hover:bg-[#00d4ff]/90 transition-all flex items-center gap-1.5">
-          <Plus className="w-3.5 h-3.5" /> Nouvelle Filière
-        </button>
-      </div>
+  // ========================
+  // STUDENTS VIEW
+  // ========================
+  const StudentsView = () => {
+    const filtered = students.filter(s =>
+      `${s.matricule} ${s.nom} ${s.prenom}`.toLowerCase().includes(studentSearch.toLowerCase())
+    )
 
-      {filieres.length ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filieres.map(f => (
-            <motion.div key={f.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className="neon-border rounded-lg p-5 bg-[#12121a] group hover:border-[rgba(0,212,255,0.3)] transition-all">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="text-[#00d4ff] font-bold text-lg font-mono">{f.code}</div>
-                  <div className="text-[#e0e0e6] font-mono text-sm">{f.nom}</div>
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => { setEditingFiliere(f); setShowFiliereForm(true) }}
-                    className="p-1.5 rounded hover:bg-[rgba(0,255,136,0.1)] text-[#6b6b8a] hover:text-[#00ff88]">
-                    <Edit className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => setDeleteFiliereConfirm(f.id)}
-                    className="p-1.5 rounded hover:bg-[rgba(255,68,68,0.1)] text-[#6b6b8a] hover:text-[#ff4444]">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              {f.description && <p className="text-xs text-[#6b6b8a] font-mono mb-3">{f.description}</p>}
-              <div className="flex gap-3 text-xs text-[#4a4a6a] font-mono">
-                {f.niveau && <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{f.niveau}</span>}
-                {f.responsable && <span className="flex items-center gap-1"><User className="w-3 h-3" />{f.responsable}</span>}
-              </div>
-              <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.06)]">
-                <span className="text-[10px] text-[#3a3a5a] font-mono">
-                  {students.filter(s => s.filiere === f.nom).length} étudiant(s)
-                </span>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      ) : (
-        <div className="neon-border rounded-lg p-16 bg-[#12121a] text-center">
-          <GraduationCap className="w-14 h-14 text-[#2a2a4a] mx-auto mb-4" />
-          <p className="text-lg text-[#4a4a6a] font-mono mb-2">Aucune filière enregistrée</p>
-          <p className="text-sm text-[#3a3a5a] font-mono mb-4">Ajoutez des filières pour organiser les étudiants</p>
-          <button onClick={() => { setEditingFiliere({}); setShowFiliereForm(true) }}
-            className="px-4 py-2 text-sm rounded-md bg-[#00d4ff] text-[#0a0a0f] font-bold hover:bg-[#00d4ff]/90 transition-all inline-flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Ajouter une filière
+    if (selectedStudent) return <StudentDetailView />
+
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6b6b8a]" />
+            <input value={studentSearch} onChange={e => setStudentSearch(e.target.value)} placeholder="Rechercher un étudiant..." className="w-full pl-10 pr-4 py-2 rounded-lg terminal-input text-sm font-mono text-[#e0e0e6] bg-[#12121a]" />
+          </div>
+          <button onClick={() => { setShowStudentForm(true); setEditingStudent(null) }} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Nouvel étudiant
           </button>
         </div>
-      )}
-    </div>
-  )
 
-  // ==================== DOCUMENTS VIEW ====================
-  const DocumentsView = () => (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold font-mono text-[#e0e0e6]">
-          <span className="text-[#ffd93d]">$</span> Documents
-        </h1>
-        <button onClick={() => setShowDocUpload(true)}
-          className="px-3 py-2 text-xs rounded-md bg-[#ffd93d] text-[#0a0a0f] font-bold hover:bg-[#ffd93d]/90 transition-all flex items-center gap-1.5">
-          <Upload className="w-3.5 h-3.5" /> Ajouter un Document
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="neon-border rounded-lg p-3 bg-[#12121a]">
-        <div className="flex flex-wrap gap-3 items-center">
-          <select className="terminal-input rounded-md px-3 py-2 text-xs bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-            value={docFilterStudent} onChange={e => setDocFilterStudent(e.target.value)}>
-            <option value="">Tous les étudiants</option>
-            {students.map(s => <option key={s.id} value={s.id}>{s.matricule} - {s.nom} {s.prenom}</option>)}
-          </select>
-          <select className="terminal-input rounded-md px-3 py-2 text-xs bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-            value={docFilterType} onChange={e => setDocFilterType(e.target.value)}>
-            <option value="">Tous les types</option>
-            {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          {(docFilterStudent || docFilterType) && (
-            <button onClick={() => { setDocFilterStudent(''); setDocFilterType('') }}
-              className="text-xs text-[#ff6b6b] hover:underline font-mono flex items-center gap-1">
-              <X className="w-3 h-3" /> Réinitialiser
+        {filtered.length === 0 ? (
+          <div className="text-center py-16">
+            <Users className="w-12 h-12 text-[#6b6b8a] mx-auto mb-4" />
+            <p className="text-sm font-mono text-[#6b6b8a]">Aucun étudiant trouvé</p>
+            <button onClick={() => { setShowStudentForm(true); setEditingStudent(null) }} className="mt-4 px-4 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors">
+              <Plus className="w-3 h-3 inline mr-1" /> Ajouter un étudiant
             </button>
-          )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filtered.map(student => (
+              <motion.div key={student.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)] hover:border-[rgba(0,255,136,0.2)] cursor-pointer transition-all duration-300 group" onClick={() => { setSelectedStudent(student); }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[#00ff88]/10 flex items-center justify-center text-[#00ff88] font-mono text-sm font-bold flex-shrink-0">
+                    {student.prenom[0]}{student.nom[0]}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-mono text-[#e0e0e6] truncate group-hover:text-[#00ff88] transition-colors">{student.nom} {student.prenom}</p>
+                    <p className="text-xs font-mono text-[#6b6b8a]">{student.matricule}</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#6b6b8a] ml-auto opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                </div>
+                {student.inscriptions && student.inscriptions.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {student.inscriptions.slice(0, 3).map(ins => (
+                      <span key={ins.id} className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#1a1a2e] text-[#6b6b8a] border border-[rgba(255,255,255,0.04)]">
+                        {ins.promotion?.filiere?.code} {ins.promotion?.niveau}
+                      </span>
+                    ))}
+                    {student.inscriptions.length > 3 && <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#1a1a2e] text-[#6b6b8a]">+{student.inscriptions.length - 3}</span>}
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ========================
+  // STUDENT DETAIL VIEW
+  // ========================
+  const StudentDetailView = () => {
+    if (!selectedStudent) return null
+    const s = selectedStudent
+
+    return (
+      <div className="space-y-4">
+        <button onClick={() => setSelectedStudent(null)} className="flex items-center gap-2 text-xs font-mono text-[#6b6b8a] hover:text-[#00ff88] transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Retour aux étudiants
+        </button>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Student Info */}
+          <div className="lg:col-span-1 p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)] space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-[#00ff88]/10 flex items-center justify-center text-[#00ff88] font-mono text-xl font-bold">
+                {s.prenom[0]}{s.nom[0]}
+              </div>
+              <div>
+                <h2 className="text-lg font-mono font-bold text-[#e0e0e6]">{s.nom} {s.prenom}</h2>
+                <p className="text-xs font-mono text-[#00ff88]">{s.matricule}</p>
+              </div>
+            </div>
+            <div className="space-y-2 text-xs font-mono">
+              {[
+                ['Date de naissance', s.dateNaissance], ['Lieu', s.lieuNaissance], ['Sexe', s.sexe], ['Nationalité', s.nationalite],
+                ['Téléphone', s.telephone], ['Email', s.email], ['Adresse', s.adresse],
+                ['Père', s.nomPere], ['Mère', s.nomMere], ['Établissement', s.etablissementOrigine], ['Diplôme', s.diplomeOrigine],
+                ['Bourse', s.bourse], ['Chambre', s.chambre],
+              ].map(([l, v]) => v ? (
+                <div key={l} className="flex justify-between">
+                  <span className="text-[#6b6b8a]">{l}</span>
+                  <span className="text-[#e0e0e6]">{v}</span>
+                </div>
+              ) : null)}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setEditingStudent(s); setShowStudentForm(true) }} className="flex-1 px-3 py-2 text-xs font-mono rounded-lg bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20 hover:bg-[#00d4ff]/20 transition-colors flex items-center justify-center gap-1">
+                <Edit3 className="w-3 h-3" /> Modifier
+              </button>
+              <button onClick={() => setShowDeleteConfirm({ type: 'student', id: s.id, name: `${s.nom} ${s.prenom}` })} className="px-3 py-2 text-xs font-mono rounded-lg bg-[#ff4444]/10 text-[#ff4444] border border-[#ff4444]/20 hover:bg-[#ff4444]/20 transition-colors flex items-center justify-center gap-1">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* Academic Timeline */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+              <h3 className="text-sm font-mono text-[#e0e0e6] mb-4 flex items-center gap-2"><Award className="w-4 h-4 text-[#00d4ff]" /> Parcours académique</h3>
+              {(!s.inscriptions || s.inscriptions.length === 0) ? (
+                <p className="text-xs font-mono text-[#6b6b8a] text-center py-4">Aucune inscription</p>
+              ) : (
+                <div className="relative pl-6">
+                  <div className="absolute left-2 top-0 bottom-0 w-px bg-[rgba(0,255,136,0.2)]" />
+                  {s.inscriptions.sort((a, b) => {
+                    const ya = a.promotion?.anneeScolaire || ''; const yb = b.promotion?.anneeScolaire || ''
+                    return ya.localeCompare(yb)
+                  }).map(ins => (
+                    <div key={ins.id} className="relative mb-4 last:mb-0">
+                      <div className="absolute -left-4 top-1 w-3 h-3 rounded-full border-2 border-[#00ff88] bg-[#0a0a0f]" />
+                      <div className="p-3 rounded-lg bg-[#1a1a2e] border border-[rgba(255,255,255,0.04)]">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="text-xs font-mono text-[#00ff88] font-bold">{ins.promotion?.filiere?.nom} — {ins.promotion?.niveau}</p>
+                            <p className="text-[10px] font-mono text-[#6b6b8a]">{ins.promotion?.anneeScolaire}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {dossierBadge(ins.statutDossier)}
+                            {ins.redoublant && <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#ffaa00]/10 text-[#ffaa00] border border-[#ffaa00]/20">Redoublant</span>}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => setShowInscriptionDetail(ins)} className="px-2 py-1 text-[10px] font-mono rounded bg-[#00d4ff]/10 text-[#00d4ff] hover:bg-[#00d4ff]/20 transition-colors flex items-center gap-1">
+                            <Eye className="w-3 h-3" /> Détails
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Documents */}
+            <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-mono text-[#e0e0e6] flex items-center gap-2"><FileText className="w-4 h-4 text-[#ffaa00]" /> Documents</h3>
+                <button onClick={() => setShowDocumentForm(true)} className="px-3 py-1.5 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Ajouter
+                </button>
+              </div>
+              {(!s.documents || s.documents.length === 0) ? (
+                <p className="text-xs font-mono text-[#6b6b8a] text-center py-4">Aucun document</p>
+              ) : (
+                <div className="space-y-2">
+                  {s.documents.map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between p-2 rounded-lg bg-[#1a1a2e] border border-[rgba(255,255,255,0.04)]">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-[#6b6b8a]" />
+                        <div>
+                          <p className="text-xs font-mono text-[#e0e0e6]">{doc.titre}</p>
+                          <p className="text-[10px] font-mono text-[#6b6b8a]">{doc.type}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => handleDeleteDocument(doc.id)} className="p-1 text-[#6b6b8a] hover:text-[#ff4444] transition-colors">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
+    )
+  }
 
-      {/* Documents Grid */}
-      {documents.length ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {documents.map(doc => (
-            <motion.div key={doc.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className="neon-border rounded-lg p-4 bg-[#12121a] group hover:border-[rgba(255,217,61,0.3)] transition-all">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-md bg-[rgba(255,217,61,0.1)]">
-                  <FileBadge className="w-5 h-5 text-[#ffd93d]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-[#e0e0e6] font-mono truncate">{doc.titre}</div>
-                  <div className="text-[10px] text-[#4a4a6a] font-mono mt-0.5">
-                    {doc.type} • {doc.tailleFichier || '—'}
-                  </div>
-                  {doc.student && (
-                    <div className="text-xs text-[#00d4ff] font-mono mt-1.5 truncate">
-                      {doc.student.matricule} — {doc.student.nom} {doc.student.prenom}
+  // ========================
+  // PROMOTIONS VIEW
+  // ========================
+  const PromotionsView = () => {
+    if (selectedPromotion) return <PromotionDetailView />
+
+    const filtered = promotions.filter(p => {
+      if (promoFilterAnnee && p.anneeScolaire !== promoFilterAnnee) return false
+      if (promoFilterFiliere && p.filiereId !== promoFilterFiliere) return false
+      if (promoFilterStatut && p.statut !== promoFilterStatut) return false
+      return true
+    })
+
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={promoFilterAnnee} onChange={e => setPromoFilterAnnee(e.target.value)} className="px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              <option value="">Toutes les années</option>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <select value={promoFilterFiliere} onChange={e => setPromoFilterFiliere(e.target.value)} className="px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              <option value="">Toutes les filières</option>
+              {filieres.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
+            </select>
+            <select value={promoFilterStatut} onChange={e => setPromoFilterStatut(e.target.value)} className="px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              <option value="">Tous les statuts</option>
+              <option value="En cours">En cours</option>
+              <option value="Clôturée">Clôturée</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setShowFiliereForm(true)} className="px-3 py-2 text-xs font-mono rounded-lg bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20 hover:bg-[#00d4ff]/20 transition-colors flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Filière
+            </button>
+            <button onClick={() => setShowPromotionForm(true)} className="px-3 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Promotion
+            </button>
+          </div>
+        </div>
+
+        {/* Filières list */}
+        {filieres.length > 0 && (
+          <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+            <h3 className="text-sm font-mono text-[#e0e0e6] mb-3 flex items-center gap-2"><BookOpen className="w-4 h-4 text-[#00d4ff]" /> Filières</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filieres.map(f => (
+                <div key={f.id} className="p-3 rounded-lg bg-[#1a1a2e] border border-[rgba(255,255,255,0.04)]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-mono text-[#00ff88] font-bold">{f.code}</p>
+                      <p className="text-xs font-mono text-[#e0e0e6]">{f.nom}</p>
+                      {f.niveau && <p className="text-[10px] font-mono text-[#6b6b8a]">{f.niveau}</p>}
                     </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => setShowDeleteConfirm({ type: 'filiere', id: f.id, name: f.nom })} className="p-1 text-[#6b6b8a] hover:text-[#ff4444] transition-colors"><Trash2 className="w-3 h-3" /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {filtered.length === 0 ? (
+          <div className="text-center py-16">
+            <GraduationCap className="w-12 h-12 text-[#6b6b8a] mx-auto mb-4" />
+            <p className="text-sm font-mono text-[#6b6b8a]">Aucune promotion trouvée</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filtered.map(promo => (
+              <motion.div key={promo.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)] hover:border-[rgba(0,255,136,0.2)] cursor-pointer transition-all duration-300 group" onClick={() => setSelectedPromotion(promo)}>
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="text-sm font-mono text-[#e0e0e6] font-bold">{promo.filiere?.nom}</p>
+                    <p className="text-xs font-mono text-[#00ff88]">{promo.niveau} — {promo.anneeScolaire}</p>
+                  </div>
+                  {promo.statut === 'Clôturée' ? (
+                    <span className="px-2 py-1 rounded text-[10px] font-mono bg-[#ff4444]/10 text-[#ff4444] border border-[#ff4444]/20 flex items-center gap-1"><Lock className="w-3 h-3" /> Clôturée</span>
+                  ) : (
+                    <span className="px-2 py-1 rounded text-[10px] font-mono bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20">En cours</span>
                   )}
                 </div>
-              </div>
-              <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-[rgba(255,255,255,0.06)]">
-                <a href={doc.fichier} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 rounded hover:bg-[rgba(0,212,255,0.1)] text-[#6b6b8a] hover:text-[#00d4ff] transition-all">
-                  <Download className="w-3.5 h-3.5" />
-                </a>
-                <button onClick={() => handleDeleteDocument(doc.id)}
-                  className="p-1.5 rounded hover:bg-[rgba(255,68,68,0.1)] text-[#6b6b8a] hover:text-[#ff4444] transition-all">
-                  <Trash2 className="w-3.5 h-3.5" />
+                <div className="flex gap-3 text-[10px] font-mono text-[#6b6b8a]">
+                  <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {promo._count?.inscriptions || 0} inscrits</span>
+                  <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> {promo._count?.matieres || 0} matières</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#6b6b8a] absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ========================
+  // PROMOTION DETAIL VIEW
+  // ========================
+  const PromotionDetailView = () => {
+    if (!selectedPromotion) return null
+    const p = selectedPromotion
+    const isClosed = p.statut === 'Clôturée'
+
+    return (
+      <div className="space-y-4">
+        <button onClick={() => { setSelectedPromotion(null); setPromoTab('inscriptions') }} className="flex items-center gap-2 text-xs font-mono text-[#6b6b8a] hover:text-[#00ff88] transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Retour aux promotions
+        </button>
+
+        {/* Closed Banner */}
+        {isClosed && (
+          <div className="p-3 rounded-xl bg-[#ff4444]/5 border border-[#ff4444]/20 flex items-center gap-3">
+            <Lock className="w-5 h-5 text-[#ff4444] flex-shrink-0" />
+            <div>
+              <p className="text-sm font-mono text-[#ff4444] font-bold">PROMOTION CLÔTURÉE — Aucune modification possible</p>
+              {p.dateCloture && <p className="text-xs font-mono text-[#6b6b8a]">Clôturée le {p.dateCloture}</p>}
+            </div>
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-mono font-bold text-[#e0e0e6]">{p.filiere?.nom} — {p.niveau}</h2>
+              <p className="text-xs font-mono text-[#6b6b8a]">{p.anneeScolaire} • {p.filiere?.code} • {isClosed ? 'Clôturée' : 'En cours'}</p>
+            </div>
+            <div className="flex gap-2">
+              {!isClosed && (
+                <button onClick={() => setShowClotureConfirm(true)} className="px-3 py-2 text-xs font-mono rounded-lg bg-[#ff4444]/10 text-[#ff4444] border border-[#ff4444]/20 hover:bg-[#ff4444]/20 transition-colors flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Clôturer
                 </button>
-              </div>
-            </motion.div>
+              )}
+              {!isClosed && (
+                <button onClick={() => setShowDeleteConfirm({ type: 'promotion', id: p.id, name: `${p.filiere?.nom} ${p.niveau}` })} className="px-3 py-2 text-xs font-mono rounded-lg bg-[#ff4444]/10 text-[#ff4444] border border-[#ff4444]/20 hover:bg-[#ff4444]/20 transition-colors flex items-center gap-1">
+                  <Trash2 className="w-3 h-3" /> Supprimer
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 rounded-lg bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+          {['inscriptions', 'matieres', 'notes'].map(tab => (
+            <button key={tab} onClick={() => setPromoTab(tab)}
+              className={`flex-1 px-3 py-2 rounded-md text-xs font-mono transition-all ${promoTab === tab ? 'bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20' : 'text-[#6b6b8a] hover:text-[#e0e0e6]'}`}>
+              {tab === 'inscriptions' ? 'Inscriptions' : tab === 'matieres' ? 'Matières' : 'Notes'}
+            </button>
           ))}
         </div>
-      ) : (
-        <div className="neon-border rounded-lg p-16 bg-[#12121a] text-center">
-          <FileText className="w-14 h-14 text-[#2a2a4a] mx-auto mb-4" />
-          <p className="text-lg text-[#4a4a6a] font-mono mb-2">Aucun document trouvé</p>
-          <p className="text-sm text-[#3a3a5a] font-mono mb-4">
-            {docFilterStudent || docFilterType
-              ? 'Essayez de modifier vos filtres'
-              : 'Ajoutez des documents aux dossiers étudiants'}
-          </p>
-          <button onClick={() => setShowDocUpload(true)}
-            className="px-4 py-2 text-sm rounded-md bg-[#ffd93d] text-[#0a0a0f] font-bold hover:bg-[#ffd93d]/90 transition-all inline-flex items-center gap-2">
-            <Upload className="w-4 h-4" /> Ajouter un document
+
+        {/* Tab Content */}
+        <AnimatePresence mode="wait">
+          {promoTab === 'inscriptions' && <PromoInscriptionsTab key="insc" promotion={p} isClosed={isClosed} />}
+          {promoTab === 'matieres' && <PromoMatieresTab key="mat" promotion={p} isClosed={isClosed} />}
+          {promoTab === 'notes' && <PromoNotesTab key="not" promotion={p} isClosed={isClosed} />}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
+  // ========================
+  // PROMO INSCRIPTIONS TAB
+  // ========================
+  const PromoInscriptionsTab = ({ promotion, isClosed }: { promotion: Promotion; isClosed: boolean }) => (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-mono text-[#6b6b8a]">{promotion.inscriptions?.length || 0} inscrits</p>
+        {!isClosed && (
+          <button onClick={() => setShowInscriptionForm(true)} className="px-3 py-1.5 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors flex items-center gap-1">
+            <UserPlus className="w-3 h-3" /> Inscrire un étudiant
           </button>
+        )}
+      </div>
+      {(!promotion.inscriptions || promotion.inscriptions.length === 0) ? (
+        <p className="text-xs font-mono text-[#6b6b8a] text-center py-8">Aucun étudiant inscrit</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono">
+            <thead><tr className="text-[#6b6b8a] border-b border-[rgba(255,255,255,0.06)]">
+              <th className="py-2 px-3 text-left">Matricule</th><th className="py-2 px-3 text-left">Nom</th><th className="py-2 px-3 text-left">Dossier</th><th className="py-2 px-3 text-left">Statut</th><th className="py-2 px-3 text-left">Redoublant</th><th className="py-2 px-3 text-left">Actions</th>
+            </tr></thead>
+            <tbody>
+              {promotion.inscriptions.map(ins => (
+                <tr key={ins.id} className="border-b border-[rgba(255,255,255,0.03)] hover:bg-[#1a1a2e]/50 transition-colors">
+                  <td className="py-2 px-3 text-[#00ff88]">{ins.student?.matricule}</td>
+                  <td className="py-2 px-3 text-[#e0e0e6]">{ins.student?.nom} {ins.student?.prenom}</td>
+                  <td className="py-2 px-3">{dossierBadge(ins.statutDossier)}</td>
+                  <td className="py-2 px-3 text-[#e0e0e6]">{ins.statut}</td>
+                  <td className="py-2 px-3">{ins.redoublant ? <span className="text-[#ffaa00]">Oui</span> : 'Non'}</td>
+                  <td className="py-2 px-3">
+                    <div className="flex gap-1">
+                      <button onClick={() => setShowInscriptionDetail(ins)} className="p-1 rounded text-[#6b6b8a] hover:text-[#00d4ff] transition-colors"><Eye className="w-3 h-3" /></button>
+                      {!isClosed && <button onClick={() => handleUpdateInscriptionDossier(ins)} className="p-1 rounded text-[#6b6b8a] hover:text-[#00ff88] transition-colors"><Edit3 className="w-3 h-3" /></button>}
+                      {!isClosed && <button onClick={() => handleDeleteInscription(ins.id)} className="p-1 rounded text-[#6b6b8a] hover:text-[#ff4444] transition-colors"><Trash2 className="w-3 h-3" /></button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </motion.div>
+  )
+
+  // ========================
+  // PROMO MATIERES TAB
+  // ========================
+  const PromoMatieresTab = ({ promotion, isClosed }: { promotion: Promotion; isClosed: boolean }) => (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-mono text-[#6b6b8a]">{promotion.matieres?.length || 0} matières</p>
+        {!isClosed && (
+          <button onClick={() => { setEditingMatiere(null); setShowMatiereForm(true) }} className="px-3 py-1.5 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors flex items-center gap-1">
+            <Plus className="w-3 h-3" /> Ajouter une matière
+          </button>
+        )}
+      </div>
+      {(!promotion.matieres || promotion.matieres.length === 0) ? (
+        <p className="text-xs font-mono text-[#6b6b8a] text-center py-8">Aucune matière</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono">
+            <thead><tr className="text-[#6b6b8a] border-b border-[rgba(255,255,255,0.06)]">
+              <th className="py-2 px-3 text-left">Code</th><th className="py-2 px-3 text-left">Nom</th><th className="py-2 px-3 text-left">Coefficient</th><th className="py-2 px-3 text-left">Semestre</th><th className="py-2 px-3 text-left">Actions</th>
+            </tr></thead>
+            <tbody>
+              {promotion.matieres.map(mat => (
+                <tr key={mat.id} className="border-b border-[rgba(255,255,255,0.03)] hover:bg-[#1a1a2e]/50 transition-colors">
+                  <td className="py-2 px-3 text-[#00ff88]">{mat.code}</td>
+                  <td className="py-2 px-3 text-[#e0e0e6]">{mat.nom}</td>
+                  <td className="py-2 px-3 text-[#e0e0e6]">{mat.coefficient}</td>
+                  <td className="py-2 px-3"><span className={`px-2 py-0.5 rounded text-[10px] ${mat.semestre === 1 ? 'bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20' : 'bg-[#c084fc]/10 text-[#c084fc] border border-[#c084fc]/20'}`}>S{mat.semestre}</span></td>
+                  <td className="py-2 px-3">
+                    {!isClosed && (
+                      <div className="flex gap-1">
+                        <button onClick={() => { setEditingMatiere(mat); setShowMatiereForm(true) }} className="p-1 rounded text-[#6b6b8a] hover:text-[#00ff88] transition-colors"><Edit3 className="w-3 h-3" /></button>
+                        <button onClick={() => handleDeleteMatiere(mat.id)} className="p-1 rounded text-[#6b6b8a] hover:text-[#ff4444] transition-colors"><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </motion.div>
+  )
+
+  // ========================
+  // PROMO NOTES TAB
+  // ========================
+  const PromoNotesTab = ({ promotion, isClosed }: { promotion: Promotion; isClosed: boolean }) => {
+    const matieres = promotion.matieres || []
+    const inscriptions = promotion.inscriptions || []
+    const [noteValues, setNoteValues] = useState<Record<string, { noteCC: string; noteExam: string; noteTP: string }>>({})
+
+    const selectedMatiere = selectedMatiereForNotes
+
+    if (matieres.length === 0) return <p className="text-xs font-mono text-[#6b6b8a] text-center py-8">Ajoutez d&apos;abord des matières</p>
+    if (inscriptions.length === 0) return <p className="text-xs font-mono text-[#6b6b8a] text-center py-8">Aucun étudiant inscrit</p>
+
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+        {isClosed && (
+          <div className="p-3 rounded-lg bg-[#ff4444]/5 border border-[#ff4444]/10 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-[#ff4444]" />
+            <span className="text-xs font-mono text-[#ff4444]">Notes verrouillées — Année clôturée</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-mono text-[#6b6b8a]">Matière :</label>
+          <select value={selectedMatiere?.id || ''} onChange={e => {
+            const mat = matieres.find(m => m.id === e.target.value) || null
+            setSelectedMatiereForNotes(mat)
+          }} className="px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+            <option value="">Sélectionner une matière</option>
+            {matieres.map(m => <option key={m.id} value={m.id}>S{m.semestre} — {m.code} {m.nom} (Coef: {m.coefficient})</option>)}
+          </select>
+        </div>
+
+        {selectedMatiere && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead><tr className="text-[#6b6b8a] border-b border-[rgba(255,255,255,0.06)]">
+                <th className="py-2 px-3 text-left">Matricule</th><th className="py-2 px-3 text-left">Nom</th>
+                <th className="py-2 px-3 text-center">CC (30%)</th><th className="py-2 px-3 text-center">Exam (50%)</th><th className="py-2 px-3 text-center">TP (20%)</th>
+                <th className="py-2 px-3 text-center">Moyenne</th><th className="py-2 px-3 text-center">Action</th>
+              </tr></thead>
+              <tbody>
+                {inscriptions.map(ins => {
+                  const existingNote = ins.notes?.find(n => n.matiereId === selectedMatiere.id)
+                  const key = `${ins.id}-${selectedMatiere.id}`
+                  const vals = noteValues[key] || {
+                    noteCC: existingNote?.noteCC?.toString() || '',
+                    noteExam: existingNote?.noteExam?.toString() || '',
+                    noteTP: existingNote?.noteTP?.toString() || '',
+                  }
+
+                  return (
+                    <tr key={ins.id} className="border-b border-[rgba(255,255,255,0.03)]">
+                      <td className="py-2 px-3 text-[#00ff88]">{ins.student?.matricule}</td>
+                      <td className="py-2 px-3 text-[#e0e0e6]">{ins.student?.nom} {ins.student?.prenom}</td>
+                      <td className="py-2 px-3"><input type="number" step="0.01" min="0" max="20" disabled={isClosed} value={vals.noteCC} onChange={e => setNoteValues(v => ({ ...v, [key]: { ...v[key] || { noteCC: '', noteExam: '', noteTP: '' }, noteCC: e.target.value } }))} className="w-16 px-2 py-1 rounded text-center terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a] disabled:opacity-50" /></td>
+                      <td className="py-2 px-3"><input type="number" step="0.01" min="0" max="20" disabled={isClosed} value={vals.noteExam} onChange={e => setNoteValues(v => ({ ...v, [key]: { ...v[key] || { noteCC: '', noteExam: '', noteTP: '' }, noteExam: e.target.value } }))} className="w-16 px-2 py-1 rounded text-center terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a] disabled:opacity-50" /></td>
+                      <td className="py-2 px-3"><input type="number" step="0.01" min="0" max="20" disabled={isClosed} value={vals.noteTP} onChange={e => setNoteValues(v => ({ ...v, [key]: { ...v[key] || { noteCC: '', noteExam: '', noteTP: '' }, noteTP: e.target.value } }))} className="w-16 px-2 py-1 rounded text-center terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a] disabled:opacity-50" /></td>
+                      <td className="py-2 px-3 text-center"><span className={`font-bold ${existingNote?.moyenne !== null && existingNote?.moyenne !== undefined ? (existingNote.moyenne >= 10 ? 'text-[#00ff88]' : 'text-[#ff4444]') : 'text-[#6b6b8a]'}`}>{existingNote?.moyenne?.toFixed(2) || '-'}</span></td>
+                      <td className="py-2 px-3 text-center">
+                        {!isClosed && (
+                          <button onClick={() => handleSaveNote(ins.id, selectedMatiere.id, vals)} className="px-2 py-1 rounded text-[10px] bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors flex items-center gap-1 mx-auto">
+                            <Save className="w-3 h-3" /> Sauver
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </motion.div>
+    )
+  }
+
+  // ========================
+  // PALMARES VIEW
+  // ========================
+  const PalmaresView = () => (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <select value={palmaresPromotionId} onChange={e => { setPalmaresPromotionId(e.target.value); if (e.target.value) loadPalmares(e.target.value) }} className="px-4 py-2 rounded-lg terminal-input text-sm font-mono text-[#e0e0e6] bg-[#12121a] min-w-[300px]">
+          <option value="">Sélectionner une promotion</option>
+          {promotions.map(p => <option key={p.id} value={p.id}>{p.filiere?.nom} — {p.niveau} ({p.anneeScolaire})</option>)}
+        </select>
+        {palmaresData && (
+          <button className="px-3 py-2 text-xs font-mono rounded-lg bg-[#1a1a2e] text-[#6b6b8a] border border-[rgba(255,255,255,0.06)] hover:text-[#e0e0e6] transition-colors flex items-center gap-1">
+            <Printer className="w-3 h-3" /> Imprimer
+          </button>
+        )}
+      </div>
+
+      {palmaresData ? (
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)] text-center">
+            <h2 className="text-lg font-mono font-bold text-[#00ff88] neon-text">PALMARÈS</h2>
+            <p className="text-sm font-mono text-[#e0e0e6]">{palmaresData.promotion.filiere.nom} — {palmaresData.promotion.niveau}</p>
+            <p className="text-xs font-mono text-[#6b6b8a]">Année scolaire {palmaresData.promotion.anneeScolaire}</p>
+          </div>
+
+          {/* Stats Summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-[#12121a] border border-[rgba(255,255,255,0.06)] text-center">
+              <p className="text-[10px] font-mono text-[#6b6b8a]">Moy. de classe</p>
+              <p className="text-lg font-mono font-bold text-[#00ff88]">{palmaresData.statistics.classAvg.toFixed(2)}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[#12121a] border border-[rgba(255,255,255,0.06)] text-center">
+              <p className="text-[10px] font-mono text-[#6b6b8a]">Taux de réussite</p>
+              <p className="text-lg font-mono font-bold text-[#00d4ff]">{palmaresData.statistics.passRate}%</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[#12121a] border border-[rgba(255,255,255,0.06)] text-center">
+              <p className="text-[10px] font-mono text-[#6b6b8a]">Effectif</p>
+              <p className="text-lg font-mono font-bold text-[#e0e0e6]">{palmaresData.statistics.totalStudents}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[#12121a] border border-[rgba(255,255,255,0.06)] text-center">
+              <p className="text-[10px] font-mono text-[#6b6b8a]">Réussis</p>
+              <p className="text-lg font-mono font-bold text-[#ffaa00]">{palmaresData.palmares.filter(p => p.moyenneAnnuelle !== null && p.moyenneAnnuelle >= 10).length}</p>
+            </div>
+          </div>
+
+          {/* Ranking Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead><tr className="text-[#6b6b8a] border-b border-[rgba(255,255,255,0.06)]">
+                <th className="py-2 px-3 text-center">Rang</th><th className="py-2 px-3 text-left">Matricule</th><th className="py-2 px-3 text-left">Nom & Prénom</th>
+                <th className="py-2 px-3 text-center">Moy. S1</th><th className="py-2 px-3 text-center">Moy. S2</th><th className="py-2 px-3 text-center">Moy. Annuelle</th>
+                <th className="py-2 px-3 text-center">Crédits</th><th className="py-2 px-3 text-center">Mention</th>
+              </tr></thead>
+              <tbody>
+                {palmaresData.palmares.map(entry => {
+                  const rankClass = entry.rang === 1 ? 'border-l-2 border-l-[#ffd93d] bg-[#ffd93d]/5' : entry.rang === 2 ? 'border-l-2 border-l-[#c0c0c0] bg-[#c0c0c0]/5' : entry.rang === 3 ? 'border-l-2 border-l-[#cd7f32] bg-[#cd7f32]/5' : ''
+                  return (
+                    <tr key={entry.inscriptionId} className={`border-b border-[rgba(255,255,255,0.03)] hover:bg-[#1a1a2e]/50 transition-colors ${rankClass}`}>
+                      <td className="py-2 px-3 text-center">
+                        {entry.rang <= 3 ? (
+                          <span className="text-base">{entry.rang === 1 ? '🥇' : entry.rang === 2 ? '🥈' : '🥉'}</span>
+                        ) : (
+                          <span className="text-[#6b6b8a]">{entry.rang}</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-[#00ff88]">{entry.matricule}</td>
+                      <td className="py-2 px-3 text-[#e0e0e6]">{entry.nom} {entry.prenom}{entry.redoublant ? ' (R)' : ''}</td>
+                      <td className="py-2 px-3 text-center text-[#e0e0e6]">{entry.moyenneS1?.toFixed(2) || '-'}</td>
+                      <td className="py-2 px-3 text-center text-[#e0e0e6]">{entry.moyenneS2?.toFixed(2) || '-'}</td>
+                      <td className="py-2 px-3 text-center font-bold text-[#e0e0e6]">{entry.moyenneAnnuelle?.toFixed(2) || '-'}</td>
+                      <td className="py-2 px-3 text-center text-[#00d4ff]">{entry.totalCredits}</td>
+                      <td className="py-2 px-3 text-center">{mentionBadge(entry.mention)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mention Distribution */}
+          <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+            <h3 className="text-sm font-mono text-[#e0e0e6] mb-3 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-[#00d4ff]" /> Répartition par mention</h3>
+            <div className="flex flex-wrap gap-3">
+              {Object.entries(palmaresData.statistics.mentionDistribution).map(([mention, count]) => (
+                <div key={mention} className="flex items-center gap-2">{mentionBadge(mention)} <span className="text-xs font-mono text-[#e0e0e6]">× {count}</span></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : palmaresPromotionId ? (
+        <div className="text-center py-16"><RefreshCw className="w-8 h-8 text-[#6b6b8a] mx-auto mb-3 animate-spin" /><p className="text-xs font-mono text-[#6b6b8a]">Chargement du palmarès...</p></div>
+      ) : (
+        <div className="text-center py-16">
+          <Trophy className="w-12 h-12 text-[#6b6b8a] mx-auto mb-4" />
+          <p className="text-sm font-mono text-[#6b6b8a]">Sélectionnez une promotion pour afficher le palmarès</p>
         </div>
       )}
     </div>
   )
 
-  // ==================== MAIN RENDER ====================
-  if (loading) {
+  // ========================
+  // DOCUMENTS VIEW
+  // ========================
+  const DocumentsView = () => {
+    const [documents, setDocuments] = useState<Document[]>([])
+    const [docLoading, setDocLoading] = useState(true)
+
+    const fetchDocs = useCallback(async () => {
+      setDocLoading(true)
+      try {
+        const params = new URLSearchParams()
+        if (docFilterStudent) params.set('etudiantId', docFilterStudent)
+        if (docFilterType) params.set('type', docFilterType)
+        const data = await api.get(`/api/documents?${params.toString()}`)
+        setDocuments(data)
+      } catch { toast.error('Erreur de chargement') }
+      finally { setDocLoading(false) }
+    }, [docFilterStudent, docFilterType])
+
+    useEffect(() => { fetchDocs() }, [fetchDocs])
+
+    // Dossier checklist for selected student
+    const checklistStudent = docFilterStudent ? students.find(s => s.id === docFilterStudent) : null
+    const studentDocs = checklistStudent ? documents.filter(d => d.etudiantId === checklistStudent.id) : []
+    const requiredDocs = ['Acte de naissance', 'Relevé de notes', 'Diplôme', 'Certificat', 'Photo']
+    const presentTypes = new Set(studentDocs.map(d => d.type))
+
     return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-[#00ff88] font-bold text-4xl font-mono neon-text mb-4">CUK</div>
-          <div className="flex items-center gap-2 text-[#6b6b8a] font-mono text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Chargement du système<span className="animate-blink">_</span></span>
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={docFilterStudent} onChange={e => setDocFilterStudent(e.target.value)} className="px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              <option value="">Tous les étudiants</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.matricule} — {s.nom} {s.prenom}</option>)}
+            </select>
+            <select value={docFilterType} onChange={e => setDocFilterType(e.target.value)} className="px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              <option value="">Tous les types</option>
+              {docTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
+          <button onClick={() => setShowDocumentForm(true)} className="px-3 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors flex items-center gap-1">
+            <Plus className="w-3 h-3" /> Ajouter un document
+          </button>
         </div>
+
+        {/* Dossier Checklist */}
+        {checklistStudent && (
+          <div className="p-4 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)]">
+            <h3 className="text-sm font-mono text-[#e0e0e6] mb-3 flex items-center gap-2"><Shield className="w-4 h-4 text-[#00d4ff]" /> Checklist du dossier — {checklistStudent.nom} {checklistStudent.prenom}</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {requiredDocs.map(dt => {
+                const present = presentTypes.has(dt)
+                return (
+                  <div key={dt} className={`flex items-center gap-2 p-2 rounded-lg border ${present ? 'bg-[#00ff88]/5 border-[#00ff88]/20' : 'bg-[#ff4444]/5 border-[#ff4444]/20'}`}>
+                    {present ? <CheckCircle className="w-4 h-4 text-[#00ff88]" /> : <XCircle className="w-4 h-4 text-[#ff4444]" />}
+                    <span className={`text-xs font-mono ${present ? 'text-[#00ff88]' : 'text-[#ff4444]'}`}>{dt}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Documents List */}
+        {docLoading ? (
+          <p className="text-xs font-mono text-[#6b6b8a] text-center py-8">Chargement...</p>
+        ) : documents.length === 0 ? (
+          <div className="text-center py-16">
+            <FileText className="w-12 h-12 text-[#6b6b8a] mx-auto mb-4" />
+            <p className="text-sm font-mono text-[#6b6b8a]">Aucun document</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {documents.map(doc => (
+              <div key={doc.id} className="p-3 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)] flex items-start gap-3">
+                <FileText className="w-8 h-8 text-[#6b6b8a] flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-mono text-[#e0e0e6] truncate">{doc.titre}</p>
+                  <p className="text-[10px] font-mono text-[#00ff88]">{doc.type}</p>
+                  {doc.student && <p className="text-[10px] font-mono text-[#6b6b8a]">{doc.student.matricule} — {doc.student.nom}</p>}
+                </div>
+                <button onClick={() => handleDeleteDocument(doc.id)} className="p-1 text-[#6b6b8a] hover:text-[#ff4444] transition-colors flex-shrink-0">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     )
   }
 
-  return (
-    <div className="min-h-screen bg-[#0a0a0f] flex">
-      {/* Desktop Sidebar */}
-      <aside className={`hidden lg:flex flex-col bg-[#0d0d14] border-r border-[rgba(255,255,255,0.06)] transition-all duration-300 ${sidebarOpen ? 'w-56' : 'w-16'}`}>
-        <SidebarContent />
-        <div className="p-2 border-t border-[rgba(255,255,255,0.06)]">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-full p-2 rounded-md text-[#6b6b8a] hover:text-[#e0e0e6] hover:bg-[rgba(255,255,255,0.03)] transition-all flex items-center justify-center">
-            {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </button>
-        </div>
-      </aside>
+  // ========================
+  // HANDLERS
+  // ========================
+  const handleSaveStudent = async (data: Record<string, unknown>) => {
+    try {
+      if (editingStudent) {
+        await api.put(`/api/students/${editingStudent.id}`, data)
+        toast.success('Étudiant modifié')
+      } else {
+        await api.post('/api/students', data)
+        toast.success('Étudiant créé')
+      }
+      setShowStudentForm(false)
+      setEditingStudent(null)
+      await refreshStudents()
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
 
-      {/* Mobile Sidebar Overlay */}
-      <AnimatePresence>
-        {mobileSidebar && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobileSidebar(false)} />
-            <motion.aside initial={{ x: -240 }} animate={{ x: 0 }} exit={{ x: -240 }}
-              className="fixed left-0 top-0 bottom-0 w-60 bg-[#0d0d14] border-r border-[rgba(255,255,255,0.06)] z-50 lg:hidden">
-              <SidebarContent />
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+  const handleSaveFiliere = async (data: Record<string, unknown>) => {
+    try {
+      await api.post('/api/filieres', data)
+      toast.success('Filière créée')
+      setShowFiliereForm(false)
+      const f = await api.get('/api/filieres')
+      setFilieres(f)
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0">
-        {/* Top Bar */}
-        <header className="h-14 border-b border-[rgba(255,255,255,0.06)] bg-[#0d0d14] flex items-center px-4 gap-4 flex-shrink-0">
-          <button onClick={() => setMobileSidebar(true)} className="lg:hidden text-[#6b6b8a] hover:text-[#e0e0e6]">
-            <Menu className="w-5 h-5" />
-          </button>
-          <div className="flex-1 flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 text-xs text-[#6b6b8a] font-mono">
-              <span className="text-[#00ff88]">CUK</span>
-              <span>/</span>
-              <span className="text-[#e0e0e6]">{navItems.find(n => n.id === activeView)?.label}</span>
-              {selectedStudent && (
-                <>
-                  <span>/</span>
-                  <span className="text-[#00d4ff]">{selectedStudent.nom} {selectedStudent.prenom}</span>
-                </>
+  const handleSavePromotion = async (data: Record<string, unknown>) => {
+    try {
+      await api.post('/api/promotions', data)
+      toast.success('Promotion créée')
+      setShowPromotionForm(false)
+      await refreshPromotions()
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleSaveInscription = async (data: Record<string, unknown>) => {
+    try {
+      await api.post('/api/inscriptions', data)
+      toast.success('Étudiant inscrit')
+      setShowInscriptionForm(false)
+      await refreshSelectedPromotion()
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleSaveMatiere = async (data: Record<string, unknown>) => {
+    try {
+      if (editingMatiere) {
+        await api.put(`/api/matieres/${editingMatiere.id}`, data)
+        toast.success('Matière modifiée')
+      } else {
+        await api.post('/api/matieres', data)
+        toast.success('Matière créée')
+      }
+      setShowMatiereForm(false)
+      setEditingMatiere(null)
+      await refreshSelectedPromotion()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleSaveNote = async (inscriptionId: string, matiereId: string, vals: { noteCC: string; noteExam: string; noteTP: string }) => {
+    try {
+      await api.post('/api/notes', {
+        inscriptionId, matiereId,
+        noteCC: vals.noteCC ? parseFloat(vals.noteCC) : null,
+        noteExam: vals.noteExam ? parseFloat(vals.noteExam) : null,
+        noteTP: vals.noteTP ? parseFloat(vals.noteTP) : null,
+      })
+      toast.success('Note enregistrée')
+      await refreshSelectedPromotion()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleCloturer = async () => {
+    if (!selectedPromotion) return
+    try {
+      await api.post(`/api/promotions/${selectedPromotion.id}/cloturer`)
+      toast.success('Promotion clôturée')
+      setShowClotureConfirm(false)
+      await refreshSelectedPromotion()
+      await refreshPromotions()
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleUpdateInscriptionDossier = async (ins: Inscription) => {
+    const statuses = ['Complet', 'Incomplet', 'En attente', 'Validé', 'Rejeté']
+    const studentStatuses = ['Actif', 'Inactif', 'Diplômé', 'Renvoyé', 'Ajourné']
+    const currentIdx = statuses.indexOf(ins.statutDossier || 'Incomplet')
+    const nextDossier = statuses[(currentIdx + 1) % statuses.length]
+    const currentStudentStatus = ins.statut || 'Actif'
+
+    // Simple toggle - cycle through dossier statuses
+    try {
+      await api.put(`/api/inscriptions/${ins.id}`, {
+        statutDossier: nextDossier,
+        statut: currentStudentStatus,
+        redoublant: ins.redoublant,
+        numeroDossier: ins.numeroDossier,
+      })
+      toast.success(`Dossier → ${nextDossier}`)
+      await refreshSelectedPromotion()
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleDeleteInscription = async (id: string) => {
+    try {
+      await api.del(`/api/inscriptions/${id}`)
+      toast.success('Inscription supprimée')
+      await refreshSelectedPromotion()
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleDeleteMatiere = async (id: string) => {
+    try {
+      await api.del(`/api/matieres/${id}`)
+      toast.success('Matière supprimée')
+      await refreshSelectedPromotion()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleDeleteDocument = async (id: string) => {
+    try {
+      await api.del(`/api/documents/${id}`)
+      toast.success('Document supprimé')
+      await refreshSelectedStudent()
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleDelete = async () => {
+    if (!showDeleteConfirm) return
+    try {
+      if (showDeleteConfirm.type === 'student') {
+        await api.del(`/api/students/${showDeleteConfirm.id}`)
+        setSelectedStudent(null)
+        await refreshStudents()
+      } else if (showDeleteConfirm.type === 'filiere') {
+        await api.del(`/api/filieres/${showDeleteConfirm.id}`)
+        const f = await api.get('/api/filieres')
+        setFilieres(f)
+      } else if (showDeleteConfirm.type === 'promotion') {
+        await api.del(`/api/promotions/${showDeleteConfirm.id}`)
+        setSelectedPromotion(null)
+        await refreshPromotions()
+      }
+      toast.success('Supprimé avec succès')
+      setShowDeleteConfirm(null)
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  const handleSaveDocument = async (data: Record<string, unknown>) => {
+    try {
+      await api.post('/api/documents', data)
+      toast.success('Document ajouté')
+      setShowDocumentForm(false)
+      await refreshSelectedStudent()
+      await refreshStats()
+    } catch (e: unknown) { toast.error((e as Error).message || 'Erreur') }
+  }
+
+  // ========================
+  // DIALOGS
+  // ========================
+
+  // Student Form Dialog
+  const StudentFormDialog = () => {
+    const [form, setForm] = useState<Record<string, string>>({
+      matricule: editingStudent?.matricule || '',
+      nom: editingStudent?.nom || '',
+      prenom: editingStudent?.prenom || '',
+      dateNaissance: editingStudent?.dateNaissance || '',
+      lieuNaissance: editingStudent?.lieuNaissance || '',
+      sexe: editingStudent?.sexe || '',
+      nationalite: editingStudent?.nationalite || 'Gabonaise',
+      telephone: editingStudent?.telephone || '',
+      email: editingStudent?.email || '',
+      adresse: editingStudent?.adresse || '',
+      nomPere: editingStudent?.nomPere || '',
+      nomMere: editingStudent?.nomMere || '',
+      telephonePere: editingStudent?.telephonePere || '',
+      telephoneMere: editingStudent?.telephoneMere || '',
+      adresseParents: editingStudent?.adresseParents || '',
+      personneContact: editingStudent?.personneContact || '',
+      telephoneContact: editingStudent?.telephoneContact || '',
+      lienParente: editingStudent?.lienParente || '',
+      etablissementOrigine: editingStudent?.etablissementOrigine || '',
+      diplomeOrigine: editingStudent?.diplomeOrigine || '',
+      anneeObtentionDiplome: editingStudent?.anneeObtentionDiplome || '',
+      bourse: editingStudent?.bourse || '',
+      chambre: editingStudent?.chambre || '',
+    })
+
+    const fields = [
+      { key: 'matricule', label: 'Matricule *', required: true },
+      { key: 'nom', label: 'Nom *', required: true },
+      { key: 'prenom', label: 'Prénom *', required: true },
+      { key: 'dateNaissance', label: 'Date de naissance' },
+      { key: 'lieuNaissance', label: 'Lieu de naissance' },
+      { key: 'sexe', label: 'Sexe', type: 'select', options: ['', 'Masculin', 'Féminin'] },
+      { key: 'nationalite', label: 'Nationalité' },
+      { key: 'telephone', label: 'Téléphone' },
+      { key: 'email', label: 'Email' },
+      { key: 'adresse', label: 'Adresse' },
+      { key: 'nomPere', label: 'Nom du père' },
+      { key: 'nomMere', label: 'Nom de la mère' },
+      { key: 'telephonePere', label: 'Tél. père' },
+      { key: 'telephoneMere', label: 'Tél. mère' },
+      { key: 'adresseParents', label: 'Adresse parents' },
+      { key: 'personneContact', label: 'Personne à contacter' },
+      { key: 'telephoneContact', label: 'Tél. contact' },
+      { key: 'lienParente', label: 'Lien de parenté' },
+      { key: 'etablissementOrigine', label: 'Établissement d\'origine' },
+      { key: 'diplomeOrigine', label: 'Diplôme d\'origine' },
+      { key: 'anneeObtentionDiplome', label: 'Année d\'obtention' },
+      { key: 'bourse', label: 'Bourse' },
+      { key: 'chambre', label: 'Chambre' },
+    ]
+
+    return (
+      <DialogOverlay onClose={() => { setShowStudentForm(false); setEditingStudent(null) }} title={editingStudent ? 'Modifier l\'étudiant' : 'Nouvel étudiant'}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-2">
+          {fields.map(f => (
+            <div key={f.key}>
+              <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">{f.label}</label>
+              {f.type === 'select' ? (
+                <select value={form[f.key] || ''} onChange={e => setForm({ ...form, [f.key]: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+                  {f.options?.map(o => <option key={o} value={o}>{o || '—'}</option>)}
+                </select>
+              ) : (
+                <input value={form[f.key] || ''} onChange={e => setForm({ ...form, [f.key]: e.target.value })} required={f.required} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]" />
               )}
             </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[rgba(255,255,255,0.06)]">
+          <button onClick={() => { setShowStudentForm(false); setEditingStudent(null) }} className="px-4 py-2 text-xs font-mono rounded-lg text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors">Annuler</button>
+          <button onClick={() => handleSaveStudent(form)} disabled={!form.matricule || !form.nom || !form.prenom} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
+            <Save className="w-3 h-3" /> {editingStudent ? 'Modifier' : 'Créer'}
+          </button>
+        </div>
+      </DialogOverlay>
+    )
+  }
+
+  // Filiere Form Dialog
+  const FiliereFormDialog = () => {
+    const [form, setForm] = useState({ code: '', nom: '', description: '', niveau: '', responsable: '' })
+    return (
+      <DialogOverlay onClose={() => setShowFiliereForm(false)} title="Nouvelle filière">
+        <div className="space-y-3">
+          {[{ key: 'code', label: 'Code *' }, { key: 'nom', label: 'Nom *' }, { key: 'description', label: 'Description' }, { key: 'niveau', label: 'Niveau', type: 'select', options: ['', 'Licence', 'Master', 'Licence & Master'] }, { key: 'responsable', label: 'Responsable' }].map(f => (
+            <div key={f.key}>
+              <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">{f.label}</label>
+              {f.type === 'select' ? (
+                <select value={form[f.key as keyof typeof form]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+                  {f.options?.map(o => <option key={o} value={o}>{o || '—'}</option>)}
+                </select>
+              ) : (
+                <input value={form[f.key as keyof typeof form]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]" />
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[rgba(255,255,255,0.06)]">
+          <button onClick={() => setShowFiliereForm(false)} className="px-4 py-2 text-xs font-mono rounded-lg text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors">Annuler</button>
+          <button onClick={() => handleSaveFiliere(form)} disabled={!form.code || !form.nom} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors disabled:opacity-50 flex items-center gap-1">
+            <Save className="w-3 h-3" /> Créer
+          </button>
+        </div>
+      </DialogOverlay>
+    )
+  }
+
+  // Promotion Form Dialog
+  const PromotionFormDialog = () => {
+    const [form, setForm] = useState({ filiereId: '', anneeScolaire: '2024-2025', niveau: 'L1' })
+    return (
+      <DialogOverlay onClose={() => setShowPromotionForm(false)} title="Nouvelle promotion">
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Filière *</label>
+            <select value={form.filiereId} onChange={e => setForm({ ...form, filiereId: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              <option value="">Sélectionner</option>
+              {filieres.map(f => <option key={f.id} value={f.id}>{f.code} — {f.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Année scolaire *</label>
+            <input value={form.anneeScolaire} onChange={e => setForm({ ...form, anneeScolaire: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]" />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Niveau *</label>
+            <select value={form.niveau} onChange={e => setForm({ ...form, niveau: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              {niveauOrder.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[rgba(255,255,255,0.06)]">
+          <button onClick={() => setShowPromotionForm(false)} className="px-4 py-2 text-xs font-mono rounded-lg text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors">Annuler</button>
+          <button onClick={() => handleSavePromotion(form)} disabled={!form.filiereId || !form.anneeScolaire || !form.niveau} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors disabled:opacity-50 flex items-center gap-1">
+            <Save className="w-3 h-3" /> Créer
+          </button>
+        </div>
+      </DialogOverlay>
+    )
+  }
+
+  // Inscription Form Dialog
+  const InscriptionFormDialog = () => {
+    const [form, setForm] = useState({ studentId: '', statutDossier: 'Incomplet', redoublant: false, numeroDossier: '' })
+    if (!selectedPromotion) return null
+    const availableStudents = students.filter(s => !selectedPromotion.inscriptions?.some(ins => ins.studentId === s.id))
+
+    return (
+      <DialogOverlay onClose={() => setShowInscriptionForm(false)} title="Inscrire un étudiant">
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Étudiant *</label>
+            <select value={form.studentId} onChange={e => setForm({ ...form, studentId: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              <option value="">Sélectionner un étudiant</option>
+              {availableStudents.map(s => <option key={s.id} value={s.id}>{s.matricule} — {s.nom} {s.prenom}</option>)}
+            </select>
+            {availableStudents.length === 0 && <p className="text-[10px] font-mono text-[#ffaa00] mt-1">Tous les étudiants sont déjà inscrits ou aucun étudiant n&apos;existe</p>}
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">N° dossier</label>
+            <input value={form.numeroDossier} onChange={e => setForm({ ...form, numeroDossier: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]" />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Statut du dossier</label>
+            <select value={form.statutDossier} onChange={e => setForm({ ...form, statutDossier: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              {['Complet', 'Incomplet', 'En attente', 'Validé', 'Rejeté'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
           <div className="flex items-center gap-2">
-            <div className="text-[10px] text-[#4a4a6a] font-mono hidden sm:block">
-              Centre Universitaire de Koulamoutou
-            </div>
-            <div className="w-2 h-2 rounded-full bg-[#00ff88] animate-pulse" />
+            <input type="checkbox" checked={form.redoublant} onChange={e => setForm({ ...form, redoublant: e.target.checked })} className="rounded" />
+            <label className="text-xs font-mono text-[#e0e0e6]">Redoublant</label>
           </div>
-        </header>
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[rgba(255,255,255,0.06)]">
+          <button onClick={() => setShowInscriptionForm(false)} className="px-4 py-2 text-xs font-mono rounded-lg text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors">Annuler</button>
+          <button onClick={() => handleSaveInscription({ ...form, promotionId: selectedPromotion!.id })} disabled={!form.studentId} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors disabled:opacity-50 flex items-center gap-1">
+            <UserPlus className="w-3 h-3" /> Inscrire
+          </button>
+        </div>
+      </DialogOverlay>
+    )
+  }
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar">
+  // Matiere Form Dialog
+  const MatiereFormDialog = () => {
+    const [form, setForm] = useState({ code: editingMatiere?.code || '', nom: editingMatiere?.nom || '', coefficient: editingMatiere?.coefficient?.toString() || '1', semestre: editingMatiere?.semestre?.toString() || '1' })
+    if (!selectedPromotion) return null
+
+    return (
+      <DialogOverlay onClose={() => { setShowMatiereForm(false); setEditingMatiere(null) }} title={editingMatiere ? 'Modifier la matière' : 'Nouvelle matière'}>
+        <div className="space-y-3">
+          {[{ key: 'code', label: 'Code *' }, { key: 'nom', label: 'Nom *' }, { key: 'coefficient', label: 'Coefficient', type: 'number' }].map(f => (
+            <div key={f.key}>
+              <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">{f.label}</label>
+              <input type={f.type || 'text'} value={form[f.key as keyof typeof form]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]" />
+            </div>
+          ))}
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Semestre</label>
+            <select value={form.semestre} onChange={e => setForm({ ...form, semestre: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              <option value="1">Semestre 1</option>
+              <option value="2">Semestre 2</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[rgba(255,255,255,0.06)]">
+          <button onClick={() => { setShowMatiereForm(false); setEditingMatiere(null) }} className="px-4 py-2 text-xs font-mono rounded-lg text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors">Annuler</button>
+          <button onClick={() => handleSaveMatiere({ ...form, coefficient: parseFloat(form.coefficient) || 1, semestre: parseInt(form.semestre) || 1, filiereId: selectedPromotion!.filiereId, promotionId: selectedPromotion!.id })} disabled={!form.code || !form.nom} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors disabled:opacity-50 flex items-center gap-1">
+            <Save className="w-3 h-3" /> {editingMatiere ? 'Modifier' : 'Créer'}
+          </button>
+        </div>
+      </DialogOverlay>
+    )
+  }
+
+  // Document Form Dialog
+  const DocumentFormDialog = () => {
+    const [form, setForm] = useState({ etudiantId: selectedStudent?.id || '', titre: '', type: 'Acte de naissance', fichier: '', tailleFichier: '' })
+    const [uploading, setUploading] = useState(false)
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      setUploading(true)
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('subfolder', 'documents')
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const data = await res.json()
+        setForm({ ...form, fichier: data.url, tailleFichier: `${(file.size / 1024).toFixed(1)} KB` })
+        toast.success('Fichier téléchargé')
+      } catch { toast.error('Erreur de téléchargement') }
+      finally { setUploading(false) }
+    }
+
+    return (
+      <DialogOverlay onClose={() => setShowDocumentForm(false)} title="Ajouter un document">
+        <div className="space-y-3">
+          {!selectedStudent && (
+            <div>
+              <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Étudiant *</label>
+              <select value={form.etudiantId} onChange={e => setForm({ ...form, etudiantId: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+                <option value="">Sélectionner</option>
+                {students.map(s => <option key={s.id} value={s.id}>{s.matricule} — {s.nom} {s.prenom}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Titre *</label>
+            <input value={form.titre} onChange={e => setForm({ ...form, titre: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]" />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Type</label>
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full px-3 py-2 rounded-lg terminal-input text-xs font-mono text-[#e0e0e6] bg-[#12121a]">
+              {docTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-[#6b6b8a] mb-1 block">Fichier</label>
+            <div className="flex items-center gap-2">
+              <label className="px-4 py-2 text-xs font-mono rounded-lg bg-[#1a1a2e] text-[#6b6b8a] border border-[rgba(255,255,255,0.06)] hover:text-[#e0e0e6] cursor-pointer transition-colors flex items-center gap-1">
+                <Upload className="w-3 h-3" /> {uploading ? 'Téléchargement...' : 'Choisir'}
+                <input type="file" onChange={handleFileUpload} className="hidden" />
+              </label>
+              {form.fichier && <span className="text-[10px] font-mono text-[#00ff88]">✓ Fichier attaché</span>}
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[rgba(255,255,255,0.06)]">
+          <button onClick={() => setShowDocumentForm(false)} className="px-4 py-2 text-xs font-mono rounded-lg text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors">Annuler</button>
+          <button onClick={() => handleSaveDocument(form)} disabled={!form.etudiantId || !form.titre || !form.fichier} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/20 hover:bg-[#00ff88]/20 transition-colors disabled:opacity-50 flex items-center gap-1">
+            <Save className="w-3 h-3" /> Ajouter
+          </button>
+        </div>
+      </DialogOverlay>
+    )
+  }
+
+  // Inscription Detail Dialog
+  const InscriptionDetailDialog = () => {
+    if (!showInscriptionDetail) return null
+    const ins = showInscriptionDetail
+    const notes = ins.notes || []
+
+    const s1Notes = notes.filter(n => n.matiere?.semestre === 1)
+    const s2Notes = notes.filter(n => n.matiere?.semestre === 2)
+
+    return (
+      <DialogOverlay onClose={() => setShowInscriptionDetail(null)} title={`Détail inscription — ${ins.student?.nom} ${ins.student?.prenom}`}>
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-3">
+            {dossierBadge(ins.statutDossier)}
+            <span className="px-2 py-0.5 rounded text-xs font-mono bg-[#1a1a2e] text-[#e0e0e6] border border-[rgba(255,255,255,0.06)]">{ins.statut}</span>
+            {ins.redoublant && <span className="px-2 py-0.5 rounded text-xs font-mono bg-[#ffaa00]/10 text-[#ffaa00] border border-[#ffaa00]/20">Redoublant</span>}
+          </div>
+          {notes.length === 0 ? (
+            <p className="text-xs font-mono text-[#6b6b8a] text-center py-4">Aucune note saisie</p>
+          ) : (
+            <>
+              {s1Notes.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-mono text-[#00d4ff] mb-2">Semestre 1</h4>
+                  <table className="w-full text-xs font-mono">
+                    <thead><tr className="text-[#6b6b8a] border-b border-[rgba(255,255,255,0.06)]">
+                      <th className="py-1 px-2 text-left">Matière</th><th className="py-1 px-2 text-center">CC</th><th className="py-1 px-2 text-center">Exam</th><th className="py-1 px-2 text-center">TP</th><th className="py-1 px-2 text-center">Moy.</th>
+                    </tr></thead>
+                    <tbody>
+                      {s1Notes.map(n => (
+                        <tr key={n.id} className="border-b border-[rgba(255,255,255,0.03)]">
+                          <td className="py-1 px-2 text-[#e0e0e6]">{n.matiere?.nom} <span className="text-[#6b6b8a]">({n.matiere?.coefficient})</span></td>
+                          <td className="py-1 px-2 text-center text-[#e0e0e6]">{n.noteCC ?? '-'}</td>
+                          <td className="py-1 px-2 text-center text-[#e0e0e6]">{n.noteExam ?? '-'}</td>
+                          <td className="py-1 px-2 text-center text-[#e0e0e6]">{n.noteTP ?? '-'}</td>
+                          <td className="py-1 px-2 text-center font-bold text-[#00ff88]">{n.moyenne?.toFixed(2) ?? '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {s2Notes.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-mono text-[#c084fc] mb-2">Semestre 2</h4>
+                  <table className="w-full text-xs font-mono">
+                    <thead><tr className="text-[#6b6b8a] border-b border-[rgba(255,255,255,0.06)]">
+                      <th className="py-1 px-2 text-left">Matière</th><th className="py-1 px-2 text-center">CC</th><th className="py-1 px-2 text-center">Exam</th><th className="py-1 px-2 text-center">TP</th><th className="py-1 px-2 text-center">Moy.</th>
+                    </tr></thead>
+                    <tbody>
+                      {s2Notes.map(n => (
+                        <tr key={n.id} className="border-b border-[rgba(255,255,255,0.03)]">
+                          <td className="py-1 px-2 text-[#e0e0e6]">{n.matiere?.nom} <span className="text-[#6b6b8a]">({n.matiere?.coefficient})</span></td>
+                          <td className="py-1 px-2 text-center text-[#e0e0e6]">{n.noteCC ?? '-'}</td>
+                          <td className="py-1 px-2 text-center text-[#e0e0e6]">{n.noteExam ?? '-'}</td>
+                          <td className="py-1 px-2 text-center text-[#e0e0e6]">{n.noteTP ?? '-'}</td>
+                          <td className="py-1 px-2 text-center font-bold text-[#00ff88]">{n.moyenne?.toFixed(2) ?? '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </DialogOverlay>
+    )
+  }
+
+  // Generic Dialog Overlay
+  const DialogOverlay = ({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-lg p-6 rounded-xl bg-[#12121a] border border-[rgba(255,255,255,0.06)] shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-mono font-bold text-[#00ff88]">{title}</h3>
+          <button onClick={onClose} className="p-1 rounded text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+        {children}
+      </motion.div>
+    </div>
+  )
+
+  // ========================
+  // RENDER
+  // ========================
+  return (
+    <div className="min-h-screen flex bg-[#0a0a0f]">
+      {mobileMenuOpen && <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setMobileMenuOpen(false)} />}
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        <TopBar />
+        <main className="flex-1 p-4 md:p-6 overflow-auto">
           <AnimatePresence mode="wait">
-            <motion.div key={activeView + (selectedStudent?.id || '')} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-              {activeView === 'dashboard' && <DashboardView />}
-              {activeView === 'students' && <StudentsView />}
-              {activeView === 'filieres' && <FilieresView />}
-              {activeView === 'documents' && <DocumentsView />}
+            <motion.div key={view + (selectedStudent?.id || '') + (selectedPromotion?.id || '')} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+              {view === 'dashboard' && <DashboardView />}
+              {view === 'students' && <StudentsView />}
+              {view === 'promotions' && <PromotionsView />}
+              {view === 'palmares' && <PalmaresView />}
+              {view === 'documents' && <DocumentsView />}
             </motion.div>
           </AnimatePresence>
-        </div>
-      </main>
+        </main>
+      </div>
 
-      {/* ==================== MODALS ==================== */}
-
-      {/* Student Form Modal */}
+      {/* Dialogs */}
       <AnimatePresence>
-        {showStudentForm && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => { setShowStudentForm(false); setEditingStudent(emptyStudent) }}>
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-2xl max-h-[90vh] rounded-lg border border-[rgba(0,255,136,0.2)] bg-[#12121a] p-6 overflow-hidden"
-              onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold font-mono text-[#00ff88] neon-text">
-                  {editingStudent.id ? 'Modifier l\'étudiant' : 'Nouvel étudiant'}
-                </h2>
-                <button onClick={() => { setShowStudentForm(false); setEditingStudent(emptyStudent) }}
-                  className="p-1.5 rounded hover:bg-[rgba(255,255,255,0.05)] text-[#6b6b8a] hover:text-[#e0e0e6]">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <StudentForm
-                student={editingStudent}
-                filieres={filieres}
-                onSave={handleSaveStudent}
-                onCancel={() => { setShowStudentForm(false); setEditingStudent(emptyStudent) }}
-              />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Delete Student Confirm */}
-      <AnimatePresence>
-        {deleteConfirm && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setDeleteConfirm(null)}>
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              className="w-full max-w-sm rounded-lg border border-[rgba(255,68,68,0.3)] bg-[#12121a] p-6"
-              onClick={e => e.stopPropagation()}>
+        {showStudentForm && <StudentFormDialog />}
+        {showFiliereForm && <FiliereFormDialog />}
+        {showPromotionForm && <PromotionFormDialog />}
+        {showInscriptionForm && <InscriptionFormDialog />}
+        {showMatiereForm && <MatiereFormDialog />}
+        {showDocumentForm && <DocumentFormDialog />}
+        {showInscriptionDetail && <InscriptionDetailDialog />}
+        {showClotureConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowClotureConfirm(false)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative w-full max-w-md p-6 rounded-xl bg-[#12121a] border border-[#ff4444]/20">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-md bg-[rgba(255,68,68,0.1)]">
-                  <AlertCircle className="w-5 h-5 text-[#ff4444]" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold font-mono text-[#e0e0e6]">Confirmer la suppression</h3>
-                  <p className="text-xs text-[#6b6b8a] font-mono mt-1">Cette action est irréversible. Tous les documents associés seront supprimés.</p>
-                </div>
+                <div className="p-2 rounded-lg bg-[#ff4444]/10"><AlertTriangle className="w-5 h-5 text-[#ff4444]" /></div>
+                <h3 className="text-sm font-mono font-bold text-[#ff4444]">Clôturer la promotion</h3>
               </div>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => setDeleteConfirm(null)}
-                  className="px-3 py-2 text-xs rounded-md border border-[rgba(255,255,255,0.1)] text-[#6b6b8a] hover:text-[#e0e0e6] transition-all">
-                  Annuler
-                </button>
-                <button onClick={() => handleDeleteStudent(deleteConfirm)}
-                  className="px-3 py-2 text-xs rounded-md bg-[#ff4444] text-white font-bold hover:bg-[#ff4444]/90 transition-all">
-                  Supprimer
+              <p className="text-xs font-mono text-[#e0e0e6] mb-2">Cette action est irréversible. Après clôture :</p>
+              <ul className="text-xs font-mono text-[#6b6b8a] list-disc list-inside mb-4 space-y-1">
+                <li>Aucune modification de notes</li>
+                <li>Aucune modification d&apos;inscriptions</li>
+                <li>Aucune modification de matières</li>
+                <li>Toutes les données seront verrouillées</li>
+              </ul>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowClotureConfirm(false)} className="px-4 py-2 text-xs font-mono rounded-lg text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors">Annuler</button>
+                <button onClick={handleCloturer} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#ff4444]/10 text-[#ff4444] border border-[#ff4444]/20 hover:bg-[#ff4444]/20 transition-colors flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Clôturer définitivement
                 </button>
               </div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
-
-      {/* Filiere Form Modal */}
-      <AnimatePresence>
-        {showFiliereForm && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => { setShowFiliereForm(false); setEditingFiliere({}) }}>
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              className="w-full max-w-md rounded-lg border border-[rgba(0,212,255,0.2)] bg-[#12121a] p-6"
-              onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold font-mono text-[#00d4ff] cyan-text">
-                  {editingFiliere.id ? 'Modifier la filière' : 'Nouvelle filière'}
-                </h2>
-                <button onClick={() => { setShowFiliereForm(false); setEditingFiliere({}) }}
-                  className="p-1.5 rounded hover:bg-[rgba(255,255,255,0.05)] text-[#6b6b8a] hover:text-[#e0e0e6]">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <FiliereForm
-                filiere={editingFiliere}
-                onSave={handleSaveFiliere}
-                onCancel={() => { setShowFiliereForm(false); setEditingFiliere({}) }}
-              />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Delete Filiere Confirm */}
-      <AnimatePresence>
-        {deleteFiliereConfirm && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setDeleteFiliereConfirm(null)}>
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              className="w-full max-w-sm rounded-lg border border-[rgba(255,68,68,0.3)] bg-[#12121a] p-6"
-              onClick={e => e.stopPropagation()}>
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(null)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative w-full max-w-md p-6 rounded-xl bg-[#12121a] border border-[#ff4444]/20">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-md bg-[rgba(255,68,68,0.1)]">
-                  <AlertCircle className="w-5 h-5 text-[#ff4444]" />
-                </div>
+                <div className="p-2 rounded-lg bg-[#ff4444]/10"><Trash2 className="w-5 h-5 text-[#ff4444]" /></div>
                 <div>
-                  <h3 className="text-sm font-bold font-mono text-[#e0e0e6]">Supprimer cette filière ?</h3>
-                  <p className="text-xs text-[#6b6b8a] font-mono mt-1">Les étudiants associés ne seront pas supprimés.</p>
+                  <h3 className="text-sm font-mono font-bold text-[#ff4444]">Confirmer la suppression</h3>
+                  <p className="text-xs font-mono text-[#6b6b8a]">{showDeleteConfirm.name}</p>
                 </div>
               </div>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => setDeleteFiliereConfirm(null)}
-                  className="px-3 py-2 text-xs rounded-md border border-[rgba(255,255,255,0.1)] text-[#6b6b8a] hover:text-[#e0e0e6] transition-all">
-                  Annuler
-                </button>
-                <button onClick={() => handleDeleteFiliere(deleteFiliereConfirm)}
-                  className="px-3 py-2 text-xs rounded-md bg-[#ff4444] text-white font-bold hover:bg-[#ff4444]/90 transition-all">
-                  Supprimer
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowDeleteConfirm(null)} className="px-4 py-2 text-xs font-mono rounded-lg text-[#6b6b8a] hover:text-[#e0e0e6] transition-colors">Annuler</button>
+                <button onClick={handleDelete} className="px-4 py-2 text-xs font-mono rounded-lg bg-[#ff4444]/10 text-[#ff4444] border border-[#ff4444]/20 hover:bg-[#ff4444]/20 transition-colors flex items-center gap-1">
+                  <Trash2 className="w-3 h-3" /> Supprimer
                 </button>
               </div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Document Upload Modal */}
-      <AnimatePresence>
-        {showDocUpload && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowDocUpload(false)}>
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              className="w-full max-w-md rounded-lg border border-[rgba(255,217,61,0.2)] bg-[#12121a] p-6"
-              onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold font-mono text-[#ffd93d]">Ajouter un document</h2>
-                <button onClick={() => setShowDocUpload(false)}
-                  className="p-1.5 rounded hover:bg-[rgba(255,255,255,0.05)] text-[#6b6b8a] hover:text-[#e0e0e6]">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <form onSubmit={handleUploadDocument} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-mono text-[#6b6b8a] uppercase tracking-wider">Étudiant *</label>
-                  <select className="terminal-input w-full rounded-md px-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-                    value={docUploadForm.etudiantId} onChange={e => setDocUploadForm(p => ({ ...p, etudiantId: e.target.value }))} required>
-                    <option value="">— Sélectionner —</option>
-                    {students.map(s => <option key={s.id} value={s.id}>{s.matricule} — {s.nom} {s.prenom}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-mono text-[#6b6b8a] uppercase tracking-wider">Titre *</label>
-                  <input className="terminal-input w-full rounded-md px-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6] placeholder:text-[#4a4a6a]"
-                    value={docUploadForm.titre} onChange={e => setDocUploadForm(p => ({ ...p, titre: e.target.value }))} placeholder="Nom du document" required />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-mono text-[#6b6b8a] uppercase tracking-wider">Type *</label>
-                  <select className="terminal-input w-full rounded-md px-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6] appearance-none"
-                    value={docUploadForm.type} onChange={e => setDocUploadForm(p => ({ ...p, type: e.target.value }))} required>
-                    <option value="">— Sélectionner —</option>
-                    {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-mono text-[#6b6b8a] uppercase tracking-wider">Fichier *</label>
-                  <input type="file" className="terminal-input w-full rounded-md px-3 py-2 text-sm bg-[#0a0a0f] text-[#e0e0e6]"
-                    onChange={e => setDocFile(e.target.files?.[0] || null)} required />
-                </div>
-                <div className="flex justify-end gap-3 pt-4 border-t border-[rgba(255,255,255,0.06)]">
-                  <button type="button" onClick={() => setShowDocUpload(false)}
-                    className="px-3 py-2 text-xs rounded-md border border-[rgba(255,255,255,0.1)] text-[#6b6b8a] hover:text-[#e0e0e6] transition-all">
-                    Annuler
-                  </button>
-                  <button type="submit" disabled={uploadingDoc}
-                    className="px-3 py-2 text-xs rounded-md bg-[#ffd93d] text-[#0a0a0f] font-bold hover:bg-[#ffd93d]/90 transition-all disabled:opacity-50 flex items-center gap-2">
-                    {uploadingDoc ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    Télécharger
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
