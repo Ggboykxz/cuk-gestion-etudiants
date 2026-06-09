@@ -4,27 +4,45 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function GET(req: NextRequest) {
   try {
     const search = req.nextUrl.searchParams.get('search')
+    const page = parseInt(req.nextUrl.searchParams.get('page') || '1')
+    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '0')
+    const gender = req.nextUrl.searchParams.get('gender')
     
+    const where: Record<string, unknown> = {}
+    if (search) {
+      where.OR = [
+        { nom: { contains: search } },
+        { prenom: { contains: search } },
+        { matricule: { contains: search } },
+      ]
+    }
+    if (gender) {
+      where.sexe = gender
+    }
+
+    const total = await db.student.count({ where })
+
     const students = await db.student.findMany({
-      where: search ? {
-        OR: [
-          { nom: { contains: search } },
-          { prenom: { contains: search } },
-          { matricule: { contains: search } },
-        ]
-      } : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         inscriptions: {
           include: {
             promotion: {
               include: { filiere: true }
-            }
+            },
+            notes: { include: { matiere: true } }
           },
           orderBy: { createdAt: 'desc' }
-        }
+        },
+        documents: true
       },
-      orderBy: { nom: 'asc' }
+      orderBy: { nom: 'asc' },
+      ...(limit > 0 ? { skip: (page - 1) * limit, take: limit } : {}),
     })
+
+    if (limit > 0) {
+      return NextResponse.json({ data: students, total, page, limit, totalPages: Math.ceil(total / limit) })
+    }
 
     return NextResponse.json(students)
   } catch (error) {
